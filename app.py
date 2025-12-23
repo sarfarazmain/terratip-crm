@@ -6,11 +6,12 @@ from datetime import datetime, date, timedelta
 import hashlib
 import time
 import re
+import random
 
 # --- CONFIGURATION ---
 st.set_page_config(page_title="TerraTip CRM", layout="wide", page_icon="🏡")
 
-# --- HIDE BRANDING & CUSTOM CSS ---
+# --- CUSTOM CSS ---
 custom_css = """
     <style>
         header {visibility: hidden;}
@@ -43,7 +44,7 @@ custom_css = """
 """
 st.markdown(custom_css, unsafe_allow_html=True)
 
-# --- GLOBAL MESSAGE RELAY ---
+# --- FEEDBACK SYSTEM ---
 def set_feedback(message, type="success"):
     st.session_state['feedback_msg'] = message
     st.session_state['feedback_type'] = type
@@ -52,9 +53,9 @@ def show_feedback():
     if 'feedback_msg' in st.session_state and st.session_state['feedback_msg']:
         msg = st.session_state['feedback_msg']
         typ = st.session_state.get('feedback_type', 'success')
-        if typ == "success": st.success(msg)
-        elif typ == "error": st.error(msg)
-        elif typ == "warning": st.warning(msg)
+        if typ == "success": st.success(msg, icon="✅")
+        elif typ == "error": st.error(msg, icon="❌")
+        elif typ == "warning": st.warning(msg, icon="⚠️")
         st.session_state['feedback_msg'] = None
 
 # --- DATABASE ---
@@ -101,6 +102,15 @@ def robust_update(sheet, phone_number, col_index, value):
                 return True, "Updated"
         except: return False, "API Error"
     except Exception as e: return False, str(e)
+
+# --- ID GENERATOR ---
+def generate_lead_id(prefix="L"):
+    # Generates a unique ID based on Time + Random 2 digits
+    # Format: L-25121045 (Year-Month-Day-Time) or just Epoch for speed
+    # We use Epoch (seconds) last 6 digits + 2 random digits to keep it short but unique
+    ts = str(int(time.time()))[-6:] 
+    rand = str(random.randint(10, 99))
+    return f"{prefix}-{ts}{rand}"
 
 # --- INITIALIZATION ---
 try:
@@ -298,7 +308,8 @@ def show_add_lead_form(users_df):
                 except: pass
                 
                 ts = datetime.now().strftime("%Y-%m-%d %H:%M")
-                row_data = ["L-New", ts, name, phone, src, ag, assign, "Naya Lead", "", ts, "", "", "", "", ""] 
+                new_id = generate_lead_id() # GENERATE ID
+                row_data = [new_id, ts, name, phone, src, ag, assign, "Naya Lead", "", ts, "", "", "", "", ""] 
                 leads_sheet.append_row(row_data)
                 set_feedback(f"✅ Saved {name}")
                 st.rerun()
@@ -332,6 +343,7 @@ def show_master_insights():
 def show_admin(users_df):
     st.header("⚙️ Admin")
     show_feedback()
+
     c1, c2 = st.columns([1,2])
     with c1:
         st.subheader("Create User")
@@ -345,65 +357,61 @@ def show_admin(users_df):
                     set_feedback(f"✅ Created {u}"); st.rerun()
         
         st.divider()
-        st.subheader("📥 Bulk Upload (Auto-Fix Encoding)")
-        st.caption("Supports: UTF-8, UTF-16, ISO-8859-1. CSV Only.")
+        st.subheader("📥 Bulk Upload (Auto-Fix)")
+        st.caption("Supports: FB Export. Auto-Sets Source = 'Meta Ads'.")
         
-        # STRICT CSV FILTER
         uploaded_file = st.file_uploader("Choose CSV File", type=['csv'])
         
         if uploaded_file is not None:
             if st.button("Start Upload"):
-                # --- ROBUST DECODING LOGIC ---
                 try:
-                    df_up = pd.read_csv(uploaded_file, encoding='utf-8')
-                except UnicodeDecodeError:
-                    uploaded_file.seek(0)
-                    try:
-                        df_up = pd.read_csv(uploaded_file, encoding='utf-16')
-                    except UnicodeDecodeError:
-                        uploaded_file.seek(0)
-                        try:
-                            df_up = pd.read_csv(uploaded_file, encoding='ISO-8859-1')
-                        except Exception as e:
-                            st.error(f"❌ File encoding not supported. Try saving as standard CSV (UTF-8). Error: {e}")
-                            st.stop()
-                
-                try:
-                    # Smart Column Detection
+                    # Robust Encoding Read
+                    try: df_up = pd.read_csv(uploaded_file, encoding='utf-8')
+                    except: 
+                        try: uploaded_file.seek(0); df_up = pd.read_csv(uploaded_file, encoding='utf-16', sep='\t')
+                        except: uploaded_file.seek(0); df_up = pd.read_csv(uploaded_file, encoding='ISO-8859-1')
+                    
                     cols = [c.lower() for c in df_up.columns]
-                    # Find 'name' or use 1st column
-                    name_idx = next((i for i, c in enumerate(cols) if "name" in c), 0)
-                    # Find 'phone' or 'mobile' or use 2nd column
-                    phone_idx = next((i for i, c in enumerate(cols) if "phone" in c or "mobile" in c), 1)
+                    
+                    # Smart Column Detection
+                    name_idx = -1
+                    for i, c in enumerate(cols):
+                        if "full_name" in c or "fullname" in c: name_idx = i; break
+                    if name_idx == -1:
+                        for i, c in enumerate(cols):
+                            if "name" in c and "ad" not in c and "form" not in c and "campaign" not in c: name_idx = i; break
+                    if name_idx == -1: name_idx = next((i for i, c in enumerate(cols) if "name" in c), 0)
+
+                    phone_idx = next((i for i, c in enumerate(cols) if "phone" in c or "mobile" in c or "p:" in c), 1)
                     
                     name_col = df_up.columns[name_idx]
                     phone_col = df_up.columns[phone_idx]
                     
-                    # Fetch existing phones
                     all_phones = set(leads_sheet.col_values(4))
-                    
                     rows_to_add = []
                     ts = datetime.now().strftime("%Y-%m-%d %H:%M")
                     
                     for idx, row in df_up.iterrows():
-                        # --- PHONE CLEANING (Strip all non-digits) ---
                         p_raw = str(row[phone_col])
-                        p_clean = re.sub(r'\D', '', p_raw) # Keep only numbers
+                        p_clean = re.sub(r'\D', '', p_raw)
                         
-                        # Only add if valid length (e.g. at least 10 digits) and not duplicate
                         if len(p_clean) >= 10 and p_clean not in all_phones:
-                            # [ID, Time, Name, Phone, Source, Agent, Assigned, Status, ..., ..., LastCall, ..., ..., ..., ..., FollowUp]
-                            new_row = ["L-Bulk", ts, row[name_col], p_clean, "Bulk Upload", "", st.session_state['username'], "Naya Lead", "", ts, "", "", "", "", ""]
+                            # AUTO GENERATE ID HERE
+                            new_id = generate_lead_id()
+                            
+                            # FORCE SOURCE = "Meta Ads"
+                            new_row = [new_id, ts, row[name_col], p_clean, "Meta Ads", "", st.session_state['username'], "Naya Lead", "", ts, "", "", "", "", ""]
                             rows_to_add.append(new_row)
                             all_phones.add(p_clean)
+                            time.sleep(0.01) # Tiny sleep to ensure random ID seed changes if strict time based
                     
                     if rows_to_add:
                         leads_sheet.append_rows(rows_to_add)
-                        set_feedback(f"✅ SUCCESS: Added {len(rows_to_add)} new leads! (Duplicates skipped)")
+                        set_feedback(f"✅ SUCCESS: Added {len(rows_to_add)} leads from Meta Ads!")
                     else:
-                        st.warning("⚠️ No new leads added (All were duplicates or invalid).")
+                        set_feedback("⚠️ No new leads added (duplicates).", "warning")
                     
-                    time.sleep(2)
+                    time.sleep(1)
                     st.rerun()
                 except Exception as e: st.error(f"Processing Error: {e}")
 
