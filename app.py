@@ -82,7 +82,6 @@ if not st.session_state['logged_in']:
             submit = st.form_submit_button("Login")
             
             if submit:
-                # Refresh user data
                 users_data = users_sheet.get_all_records()
                 users_df = pd.DataFrame(users_data)
                 
@@ -99,7 +98,6 @@ if not st.session_state['logged_in']:
 
 # --- 4. APP LAYOUT ---
 
-# SIDEBAR (Simple Profile Info Only)
 st.sidebar.title("TerraTip CRM 🏡")
 st.sidebar.write(f"👤 **{st.session_state['name']}**")
 st.sidebar.caption(f"Role: {st.session_state['role']}")
@@ -109,7 +107,7 @@ if st.sidebar.button("Logout"):
 
 # --- FUNCTIONS FOR MAIN VIEWS ---
 
-def show_crm_dashboard():
+def show_crm_dashboard(users_df):
     # 1. Load Leads
     leads_data = leads_sheet.get_all_records()
     leads_df = pd.DataFrame(leads_data)
@@ -124,18 +122,45 @@ def show_crm_dashboard():
                 (leads_df[col_match[0]] == "TC1")
             ]
 
-    # 3. Add Lead Form
+    # 3. ADD NEW LEAD (INTERACTIVE SECTION)
     with st.expander("➕ Add New Lead", expanded=False):
-        with st.form("add_lead", clear_on_submit=True):
-            c1, c2 = st.columns(2)
-            name = c1.text_input("Client Name")
-            phone = c2.text_input("Phone")
-            source = st.selectbox("Source", ["Meta Ads", "Referral", "Cold Call"])
-            if st.form_submit_button("Save"):
+        # We use standard widgets (not st.form) to allow "Unlock" logic
+        c1, c2 = st.columns(2)
+        name = c1.text_input("Client Name")
+        phone = c2.text_input("Phone Number (10 Digits)")
+        
+        c3, c4 = st.columns(2)
+        source = c3.selectbox("Source", ["Meta Ads", "Canopy", "Agent", "Others"])
+        
+        # DYNAMIC FIELD: Only show if Agent is selected
+        agent_name = ""
+        if source == "Agent":
+            agent_name = c4.text_input("Enter Agent Name")
+        
+        # ASSIGNMENT LOGIC
+        assigned_to = st.session_state['username'] # Default to self
+        if st.session_state['role'] == "Manager":
+            # Manager can assign to anyone
+            all_users = users_df['Username'].tolist()
+            assigned_to = st.selectbox("Assign Lead To", all_users, index=all_users.index(st.session_state['username']) if st.session_state['username'] in all_users else 0)
+        
+        # SAVE BUTTON
+        if st.button("Save Lead", type="primary"):
+            # Validation
+            if not name:
+                st.error("⚠️ Client Name is required.")
+            elif not phone.isdigit() or len(phone) != 10:
+                st.error("⚠️ Invalid Phone Number. Please enter exactly 10 digits (no spaces, no +91).")
+            elif source == "Agent" and not agent_name:
+                st.error("⚠️ You selected 'Agent' but didn't enter the Agent's Name.")
+            else:
+                # Save to Sheet
                 ts = datetime.now().strftime("%Y-%m-%d %H:%M")
-                new_row = ["L-New", ts, name, phone, source, st.session_state['name'], st.session_state['username'], "Naya"]
+                # Structure: [ID, Time, Name, Phone, Source, Agent Name, Assigned, Status]
+                # We save 'agent_name' in Column F (Agent Name) and 'assigned_to' in Column G (Assigned)
+                new_row = ["L-New", ts, name, phone, source, agent_name, assigned_to, "Naya"]
                 leads_sheet.append_row(new_row)
-                st.success("Lead Saved Successfully!")
+                st.success(f"✅ Lead '{name}' assigned to {assigned_to}!")
                 st.rerun()
 
     # 4. Display Leads
@@ -144,7 +169,7 @@ def show_crm_dashboard():
         leads_df = leads_df[leads_df['Client Name'] != ""]
 
     if leads_df.empty:
-        st.info("No leads assigned to you.")
+        st.info("No leads found.")
 
     for i, row in leads_df.iterrows():
         name = row.get('Client Name', 'Unknown')
@@ -160,7 +185,12 @@ def show_crm_dashboard():
             c1, c2 = st.columns([2, 1])
             with c1:
                 st.write(f"📞 **{phone}**")
-                st.write(f"📌 {row.get('Source', '-')}")
+                st.write(f"📌 Source: {row.get('Source', '-')}")
+                # Show Agent Name if it exists
+                if row.get('Agent Name'):
+                    st.write(f"👤 Agent: {row.get('Agent Name')}")
+                st.caption(f"Assigned: {row.get('Assigned', '-')}")
+                
             with c2:
                 st.link_button("WhatsApp", f"https://wa.me/91{phone}?text=Namaste {name}")
             
@@ -182,15 +212,13 @@ def show_crm_dashboard():
                     except:
                         st.error("Error finding columns.")
 
-def show_admin_panel():
+def show_admin_panel(users_df, users_sheet):
     st.header("⚙️ Admin Panel")
     
-    # Message Relay
     if 'admin_msg' in st.session_state and st.session_state['admin_msg']:
         st.success(st.session_state['admin_msg'])
         st.session_state['admin_msg'] = None
 
-    # Two Columns: Create vs View/Delete
     ac1, ac2 = st.columns([1, 2])
     
     with ac1:
@@ -238,15 +266,10 @@ def show_admin_panel():
 # --- 5. MAIN PAGE LOGIC ---
 
 if st.session_state['role'] == "Manager":
-    # Manager sees Tabs
     tab1, tab2 = st.tabs(["🏡 CRM Dashboard", "⚙️ Admin Panel"])
-    
     with tab1:
-        show_crm_dashboard()
-        
+        show_crm_dashboard(users_df)
     with tab2:
-        show_admin_panel()
-
+        show_admin_panel(users_df, users_sheet)
 else:
-    # Telecaller sees ONLY Dashboard (No Tabs)
-    show_crm_dashboard()
+    show_crm_dashboard(users_df)
