@@ -12,10 +12,9 @@ import itertools
 # --- CONFIGURATION ---
 st.set_page_config(page_title="TerraTip CRM", layout="wide", page_icon="🏡")
 
-# --- CUSTOM CSS (FAT FINGER & VISIBILITY) ---
+# --- CUSTOM CSS ---
 custom_css = """
     <style>
-        /* HIDE STREAMLIT HEADER BUT KEEP CONTENT VISIBLE */
         header {visibility: hidden;}
         #MainMenu {visibility: hidden;}
         footer {visibility: hidden;}
@@ -23,12 +22,6 @@ custom_css = """
         [data-testid="stElementToolbar"] {display: none;}
         [data-testid="stDecoration"] {display: none;}
         
-        /* ADJUST TOP PADDING (Since header is hidden) */
-        .block-container {
-            padding-top: 1rem !important;
-        }
-
-        /* FAT LEADS */
         .streamlit-expanderHeader {
             font-size: 18px !important;
             font-weight: bold !important;
@@ -122,27 +115,14 @@ def init_auth_system(sh):
     return ws
 
 def robust_update(sheet, phone_number, col_index, value):
+    # This is the legacy function, kept for simple single updates
     try:
         cell = sheet.find(phone_number)
         if cell:
             sheet.update_cell(cell.row, col_index, value)
             return True, "Updated"
         return False, "Lead not found"
-    except gspread.exceptions.APIError:
-        time.sleep(1)
-        try:
-            cell = sheet.find(phone_number)
-            if cell:
-                sheet.update_cell(cell.row, col_index, value)
-                return True, "Updated"
-        except: return False, "API Error"
     except Exception as e: return False, str(e)
-
-def get_row_index(sheet, phone_number):
-    try:
-        cell = sheet.find(phone_number)
-        return cell.row if cell else None
-    except: return None
 
 def generate_lead_id(prefix="L"):
     ts = str(int(time.time()))[-6:] 
@@ -191,9 +171,7 @@ if not st.session_state['logged_in']:
                 else: st.error("❌ Invalid")
     st.stop()
 
-# --- MAIN APP LAYOUT ---
-
-# 1. TOP BAR (VISIBLE TO EVERYONE)
+# --- APP LAYOUT ---
 c_top_1, c_top_2 = st.columns([3, 1])
 with c_top_1:
     st.markdown(f"### 🏡 TerraTip CRM\n👤 **{st.session_state['name']}** ({st.session_state['role']})")
@@ -207,14 +185,15 @@ st.divider()
 def big_call_btn(num): return f"""<a href="tel:{num}" class="big-btn call-btn">📞 CALL NOW</a>"""
 def big_wa_btn(num, name): return f"""<a href="https://wa.me/91{num}?text=Namaste {name}" class="big-btn wa-btn" target="_blank">💬 WHATSAPP</a>"""
 
-# --- LIVE FEED (FRAGMENT) ---
-@st.fragment(run_every=10)
+# --- LIVE FEED (OPTIMIZED REFRESH 30s) ---
+@st.fragment(run_every=30)
 def show_live_leads_list(users_df, search_q, status_f):
     try: data = leads_sheet.get_all_records(); df = pd.DataFrame(data)
     except: return
 
-    df.columns = df.columns.str.strip()
+    df.columns = df.columns.str.strip() # Clean headers
 
+    # Filter Logic
     if st.session_state['role'] == "Telecaller":
         c_match = [c for c in df.columns if "Assign" in c] 
         if c_match:
@@ -222,10 +201,8 @@ def show_live_leads_list(users_df, search_q, status_f):
                     (df[c_match[0]] == st.session_state['name']) |
                     (df[c_match[0]] == "TC1")]
 
-    if search_q: 
-        df = df[df.astype(str).apply(lambda x: x.str.contains(search_q, case=False)).any(axis=1)]
-    if status_f: 
-        df = df[df['Status'].isin(status_f)]
+    if search_q: df = df[df.astype(str).apply(lambda x: x.str.contains(search_q, case=False)).any(axis=1)]
+    if status_f: df = df[df['Status'].isin(status_f)]
 
     today = date.today()
     
@@ -234,8 +211,9 @@ def show_live_leads_list(users_df, search_q, status_f):
         f_date_str = str(row.get('Next Followup', '')).strip() 
         priority = 2
         alert_msg = ""
-        if "Naya" in status: 
-            priority = 0; alert_msg = "⚡ NEW LEAD"
+        
+        if "Naya" in status: priority = 0; alert_msg = "⚡ NEW LEAD"
+        elif "Negotiation" in status: priority = 0; alert_msg = "💰 CLOSING"
         elif f_date_str and len(f_date_str) > 5:
             try:
                 f_date = datetime.strptime(f_date_str, "%Y-%m-%d").date()
@@ -254,18 +232,24 @@ def show_live_leads_list(users_df, search_q, status_f):
 
     st.caption(f"⚡ Live: {len(df)} Leads")
     
-    status_opts = ["Naya Lead", "Call Uthaya Nahi / Busy", "Baat Hui - Interested", "Site Visit Scheduled", "Visit Done - Soch Raha Hai", "Faltu / Agent / Spam", "Not Interested (Mehenga Hai)", "Sold (Plot Bik Gaya)"]
+    status_opts = [
+        "Naya Lead", "Ringing / Busy / No Answer", "Asked to Call Later", 
+        "Interested (Send Details)", "Site Visit Scheduled", "Visit Done (Negotiation)", 
+        "Sale Closed / Booked", "Not Interested / Price / Location", "Junk / Invalid / Agent"
+    ]
     all_telecallers = users_df['Username'].tolist()
 
     def get_pipeline_action(status):
-        if "Naya" in status: return ("⚡ ACTION: Call Now", "blue")
-        if "Busy" in status: return ("⏰ ACTION: Retry in 4 hrs", "orange")
+        if "Naya" in status: return ("⚡ ACTION: Call Immediately", "blue")
+        if "Ringing" in status: return ("⏰ ACTION: Retry in 4 hours", "orange")
+        if "Call Later" in status: return ("📅 ACTION: Set Appointment", "orange")
         if "Interested" in status: return ("💬 ACTION: WhatsApp Brochure", "green")
         if "Scheduled" in status: return ("📍 ACTION: Confirm Visit", "green")
-        if "Visit Done" in status: return ("🤝 ACTION: Close Deal", "blue")
-        if "Faltu" in status: return ("🗑️ ACTION: Ignore", "red")
-        if "Sold" in status: return ("🎉 ACTION: Party!", "green")
-        return ("❓ ACTION: Update", "grey")
+        if "Visit Done" in status: return ("💰 ACTION: Close Deal", "blue")
+        if "Closed" in status: return ("🎉 ACTION: Party!", "green")
+        if "Junk" in status: return ("🗑️ ACTION: Ignore", "red")
+        if "Not Interested" in status: return ("📉 ACTION: Ask for Referrals", "grey")
+        return ("❓ ACTION: Update Status", "grey")
 
     for i, row in df.iterrows():
         name = row.get('Client Name', 'Unknown')
@@ -275,10 +259,11 @@ def show_live_leads_list(users_df, search_q, status_f):
         assigned_to = row.get(assign_col_name, '-')
         
         icon = "⚪"
-        if "Sold" in status: icon = "🟢"
-        elif "Faltu" in status: icon = "🔴"
+        if "Closed" in status: icon = "🟢"
+        elif "Junk" in status or "Not Interest" in status: icon = "🔴"
         elif "Visit" in status: icon = "🚕"
         elif "Naya" in status: icon = "⚡"
+        elif "Negotiation" in status: icon = "💰"
         
         alert_text = row.get('Alert', '')
         action_text, action_color = get_pipeline_action(status)
@@ -323,40 +308,55 @@ def show_live_leads_list(users_df, search_q, status_f):
                 st.write("")
                 if st.form_submit_button("✅ UPDATE LEAD", type="primary", use_container_width=True):
                     try:
-                        h = leads_sheet.row_values(1)
-                        try: s_idx = next(i for i,v in enumerate(h) if "Status" in v) + 1
-                        except: s_idx = 8
-                        try: n_idx = next(i for i,v in enumerate(h) if "Notes" in v) + 1
-                        except: n_idx = 12
-                        try: a_idx = next(i for i,v in enumerate(h) if "Assign" in v) + 1
-                        except: a_idx = 7
-                        try: t_idx = next(i for i,v in enumerate(h) if "Last Call" in v) + 1
-                        except: t_idx = 10
-                        try: f_idx = next(i for i,v in enumerate(h) if "Follow" in v) + 1
-                        except: f_idx = 15
-                        try: c_idx = next(i for i,v in enumerate(h) if "Count" in v) + 1
-                        except: c_idx = None
-
-                        succ, msg = robust_update(leads_sheet, phone, s_idx, ns)
-                        if succ:
-                            if note: robust_update(leads_sheet, phone, n_idx, note)
-                            if final_date: robust_update(leads_sheet, phone, f_idx, str(final_date))
-                            robust_update(leads_sheet, phone, t_idx, datetime.now().strftime("%Y-%m-%d %H:%M"))
+                        # --- OPTIMIZED UPDATE LOGIC (SAVE API QUOTA) ---
+                        # 1. Find Row ONCE
+                        cell = leads_sheet.find(phone)
+                        if not cell:
+                            st.error("❌ Lead not found (Deleted?)")
+                        else:
+                            r = cell.row
+                            h = leads_sheet.row_values(1)
                             
-                            if c_idx:
-                                try:
-                                    r_num = get_row_index(leads_sheet, phone)
-                                    if r_num:
-                                        curr_val = leads_sheet.cell(r_num, c_idx).value
-                                        new_val = int(curr_val) + 1 if curr_val and curr_val.isdigit() else 1
-                                        leads_sheet.update_cell(r_num, c_idx, new_val)
-                                except: pass
-
+                            # Map Columns
+                            def get_col(name):
+                                try: return next(i for i,v in enumerate(h) if name in v) + 1
+                                except: return None
+                            
+                            updates = []
+                            # Status Update
+                            s_idx = get_col("Status") or 8
+                            updates.append({'range': gspread.utils.rowcol_to_a1(r, s_idx), 'values': [[ns]]})
+                            
+                            # Note Update
+                            n_idx = get_col("Notes") or 12
+                            if note: updates.append({'range': gspread.utils.rowcol_to_a1(r, n_idx), 'values': [[note]]})
+                            
+                            # Date Update
+                            f_idx = get_col("Follow") or 15
+                            if final_date: updates.append({'range': gspread.utils.rowcol_to_a1(r, f_idx), 'values': [[str(final_date)]]})
+                            
+                            # Last Call Time Update
+                            t_idx = get_col("Last Call") or 10
+                            updates.append({'range': gspread.utils.rowcol_to_a1(r, t_idx), 'values': [[datetime.now().strftime("%Y-%m-%d %H:%M")]]})
+                            
+                            # Re-Assign Update
                             if new_assign and new_assign != assigned_to:
-                                robust_update(leads_sheet, phone, a_idx, new_assign)
+                                a_idx = get_col("Assign") or 7
+                                updates.append({'range': gspread.utils.rowcol_to_a1(r, a_idx), 'values': [[new_assign]]})
+                            
+                            # Call Count Increment
+                            c_idx = get_col("Count")
+                            if c_idx:
+                                curr = leads_sheet.cell(r, c_idx).value
+                                val = int(curr) + 1 if curr and curr.isdigit() else 1
+                                updates.append({'range': gspread.utils.rowcol_to_a1(r, c_idx), 'values': [[val]]})
+
+                            # EXECUTE BATCH UPDATE (Saves Quota!)
+                            leads_sheet.batch_update(updates)
+                            
                             set_feedback(f"✅ Updated {name}")
+                            time.sleep(1) # Safety pause
                             st.rerun()
-                        else: st.error(msg)
                     except Exception as e: st.error(f"Err: {e}")
 
 def show_add_lead_form(users_df):
@@ -382,6 +382,7 @@ def show_add_lead_form(users_df):
                 
                 ts = datetime.now().strftime("%Y-%m-%d %H:%M")
                 new_id = generate_lead_id()
+                # Ensure row has enough empty strings for all potential columns
                 row_data = [new_id, ts, name, phone, src, ag, assign, "Naya Lead", "", ts, "", "", "", "", ""] 
                 leads_sheet.append_row(row_data)
                 set_feedback(f"✅ Saved {name}")
@@ -398,8 +399,8 @@ def show_master_insights():
     df.columns = df.columns.str.strip()
 
     st.subheader("1️⃣ Business Pulse")
-    tot = len(df); sold = len(df[df['Status'].str.contains("Sold", na=False)])
-    junk = len(df[df['Status'].str.contains("Faltu", na=False)])
+    tot = len(df); sold = len(df[df['Status'].str.contains("Closed", na=False)])
+    junk = len(df[df['Status'].str.contains("Junk|Not Interest", na=False)])
     m1,m2,m3 = st.columns(3)
     m1.metric("Total", tot); m2.metric("Sold", sold); m3.metric("Junk", junk)
     
@@ -410,8 +411,8 @@ def show_master_insights():
         stats = []
         for user, user_df in df.groupby(assign_col):
             pending = len(user_df[user_df['Status'] == 'Naya Lead'])
-            working = len(user_df[user_df['Status'].str.contains("Busy|Interested|Visit", na=False)])
-            sold_count = len(user_df[user_df['Status'].str.contains("Sold", na=False)])
+            working = len(user_df[user_df['Status'].str.contains("Busy|Interest|Visit", na=False)])
+            sold_count = len(user_df[user_df['Status'].str.contains("Closed", na=False)])
             
             last_active = "-"
             lc_col = next((c for c in df.columns if "Last Call" in c), None)
@@ -489,7 +490,6 @@ def show_admin(users_df):
                         p_raw = str(row[phone_col])
                         p_clean = re.sub(r'\D', '', p_raw)
                         
-                        # LOGIC FIX: RE-INQUIRY
                         is_duplicate = p_clean in all_phones
                         if len(p_clean) >= 10 and not is_duplicate:
                             new_id = generate_lead_id()
