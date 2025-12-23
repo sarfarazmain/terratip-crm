@@ -26,20 +26,18 @@ custom_css = """
         .streamlit-expanderHeader {
             font-size: 18px !important;
             font-weight: bold !important;
-            padding: 20px !important; /* Huge touch target */
+            padding: 20px !important; 
             background-color: #262730 !important;
             border: 1px solid #444 !important;
             border-radius: 10px !important;
             margin-bottom: 8px !important;
         }
         
-        /* CARD BODY */
         [data-testid="stExpander"] {
             border: None !important;
             box-shadow: None !important;
         }
         
-        /* ACTION BUTTONS */
         .big-btn {
             display: block;
             width: 100%;
@@ -55,7 +53,6 @@ custom_css = """
         .call-btn { background-color: #28a745; color: white !important; }
         .wa-btn { background-color: #25D366; color: white !important; }
         
-        /* FORM INPUTS */
         div[role="radiogroup"] > label {
             padding: 12px;
             background: #1e1e1e;
@@ -193,15 +190,14 @@ def big_call_btn(num): return f"""<a href="tel:{num}" class="big-btn call-btn">�
 def big_wa_btn(num, name): return f"""<a href="https://wa.me/91{num}?text=Namaste {name}" class="big-btn wa-btn" target="_blank">💬 WHATSAPP</a>"""
 
 # --- LIVE FEED (FRAGMENT) ---
-# NOTE: Filters are passed IN so they don't reset when this fragment refreshes
 @st.fragment(run_every=10)
 def show_live_leads_list(users_df, search_q, status_f):
     try: data = leads_sheet.get_all_records(); df = pd.DataFrame(data)
     except: return
 
-    # --- FILTER LOGIC (Inside Fragment to apply to fresh data) ---
+    # --- FILTER LOGIC ---
     if st.session_state['role'] == "Telecaller":
-        c_match = [c for c in df.columns if "Assigned" in c]
+        c_match = [c for c in df.columns if "Assign" in c] # Smart search for Assigned/Assigned To/Assigned TC
         if c_match:
             df = df[(df[c_match[0]] == st.session_state['username']) | 
                     (df[c_match[0]] == st.session_state['name']) |
@@ -251,7 +247,10 @@ def show_live_leads_list(users_df, search_q, status_f):
         name = row.get('Client Name', 'Unknown')
         status = row.get('Status', 'Naya Lead')
         phone = str(row.get('Phone', '')).replace(',', '').replace('.', '')
-        assigned_to = row.get('Assigned', '-')
+        
+        # SMART ASSIGNED COLUMN FINDER
+        assign_col_name = next((c for c in df.columns if "Assign" in c), 'Assigned')
+        assigned_to = row.get(assign_col_name, '-')
         
         icon = "⚪"
         if "Sold" in status: icon = "🟢"
@@ -283,7 +282,6 @@ def show_live_leads_list(users_df, search_q, status_f):
             # FORM
             with st.form(f"u_{i}"):
                 st.write("📝 **Status:**")
-                # RADIO BUTTONS FOR EASY TAP
                 ns = st.selectbox("Status", status_opts, key=f"s_{i}", index=status_opts.index(status) if status in status_opts else 0, label_visibility="collapsed")
                 
                 c_u1, c_u2 = st.columns(2)
@@ -299,24 +297,31 @@ def show_live_leads_list(users_df, search_q, status_f):
                 
                 new_assign = None
                 if st.session_state['role'] == "Manager":
-                    new_assign = st.selectbox("Re-Assign:", all_telecallers, index=all_telecallers.index(assigned_to) if assigned_to in all_telecallers else 0, key=f"a_{i}")
+                    # Try to find user in list, else default 0
+                    try: u_idx = all_telecallers.index(assigned_to)
+                    except: u_idx = 0
+                    new_assign = st.selectbox("Re-Assign:", all_telecallers, index=u_idx, key=f"a_{i}")
 
                 st.write("")
                 if st.form_submit_button("✅ UPDATE LEAD", type="primary", use_container_width=True):
                     try:
                         h = leads_sheet.row_values(1)
-                        try: s_idx = h.index("Status")+1
+                        # --- ROBUST COLUMN INDEX FINDER ---
+                        # Finds column index by searching for keywords in headers
+                        try: s_idx = next(i for i,v in enumerate(h) if "Status" in v) + 1
                         except: s_idx = 8
-                        try: n_idx = h.index("Notes")+1 
+                        
+                        try: n_idx = next(i for i,v in enumerate(h) if "Notes" in v) + 1
                         except: n_idx = 12
-                        try: a_idx = h.index("Assigned")+1 
+                        
+                        try: a_idx = next(i for i,v in enumerate(h) if "Assign" in v) + 1
                         except: a_idx = 7
-                        try: t_idx = h.index("Last Call")+1 
+                        
+                        try: t_idx = next(i for i,v in enumerate(h) if "Last Call" in v) + 1
                         except: t_idx = 10
                         
-                        f_idx = 15
-                        for idx, col_name in enumerate(h):
-                            if "Follow" in col_name: f_idx = idx + 1; break
+                        try: f_idx = next(i for i,v in enumerate(h) if "Follow" in v) + 1
+                        except: f_idx = 15
                         
                         succ, msg = robust_update(leads_sheet, phone, s_idx, ns)
                         if succ:
@@ -376,9 +381,12 @@ def show_master_insights():
     m1.metric("Total", tot); m2.metric("Sold", sold); m3.metric("Junk", junk)
     
     st.subheader("2️⃣ Team Activity")
-    assign_col = 'Assigned' if 'Assigned' in df.columns else 'Assigned To'
     
-    if assign_col in df.columns:
+    # --- SMART COLUMN DETECTOR ---
+    # Finds the first column that contains "Assign" (case insensitive)
+    assign_col = next((c for c in df.columns if "assign" in c.lower()), None)
+    
+    if assign_col:
         stats = []
         for user, user_df in df.groupby(assign_col):
             pending = len(user_df[user_df['Status'] == 'Naya Lead'])
@@ -386,7 +394,7 @@ def show_master_insights():
             sold_count = len(user_df[user_df['Status'].str.contains("Sold", na=False)])
             
             last_active = "-"
-            lc_col = 'Last Call' if 'Last Call' in df.columns else None
+            lc_col = next((c for c in df.columns if "Last Call" in c), None)
             if lc_col:
                 valid_dates = [str(d) for d in user_df[lc_col] if str(d).strip() != ""]
                 if valid_dates: last_active = max(valid_dates)
@@ -405,7 +413,7 @@ def show_master_insights():
         else:
             st.info("No activity yet.")
     else:
-        st.error(f"Column '{assign_col}' not found. Headers detected: {list(df.columns)}")
+        st.error(f"⚠️ System Error: Could not find 'Assigned' column. Headers found: {list(df.columns)}")
 
 def show_admin(users_df):
     st.header("⚙️ Admin")
@@ -502,7 +510,6 @@ def show_dashboard(users_df):
     c_search, c_filter = st.columns([2, 1])
     search_q = c_search.text_input("🔍 Search", placeholder="Name / Phone", key="search_q")
     
-    # Get Status options (requires reading sheet once)
     try: 
         df_temp = pd.DataFrame(leads_sheet.get_all_records())
         status_opts = df_temp['Status'].unique() if 'Status' in df_temp.columns else []
@@ -510,7 +517,6 @@ def show_dashboard(users_df):
     
     status_f = c_filter.multiselect("Filter", status_opts, key="status_f")
     
-    # --- PASS VALUES TO FRAGMENT ---
     show_live_leads_list(users_df, search_q, status_f)
 
 if st.session_state['role'] == "Manager":
