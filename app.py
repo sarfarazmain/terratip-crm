@@ -8,7 +8,23 @@ import time
 
 # --- CONFIGURATION ---
 st.set_page_config(page_title="TerraTip CRM", layout="wide", page_icon="🏡")
-hide_bar = """<style>header {visibility: hidden;} footer {visibility: hidden;} #MainMenu {visibility: hidden;}</style>"""
+
+# --- HIDE ALL STREAMLIT BRANDING (CSS HACK) ---
+hide_bar = """
+    <style>
+        /* Hide the top header (hamburger menu, running man) */
+        header {visibility: hidden;}
+        #MainMenu {visibility: hidden;}
+        
+        /* Hide the footer (Made with Streamlit) */
+        footer {visibility: hidden;}
+        
+        /* Hide the 'Manage App' or 'Deploy' buttons on bottom right */
+        .stAppDeployButton {display: none;}
+        [data-testid="stElementToolbar"] {display: none;}
+        [data-testid="stDecoration"] {display: none;}
+    </style>
+"""
 st.markdown(hide_bar, unsafe_allow_html=True)
 
 # --- GLOBAL MESSAGE RELAY SYSTEM ---
@@ -136,7 +152,7 @@ if not st.session_state['logged_in']:
             submit = st.form_submit_button("Login Karein")
             
             if submit:
-                # Reload user data to capture any new password changes
+                # Reload user data
                 users_data = users_sheet.get_all_records()
                 users_df = pd.DataFrame(users_data)
                 
@@ -161,13 +177,13 @@ st.sidebar.title("TerraTip CRM 🏡")
 st.sidebar.write(f"👤 **{st.session_state['name']}**")
 st.sidebar.caption(f"Role: {st.session_state['role']}")
 
-# REFRESH DATA BUTTON (Best practice instead of F5)
+# REFRESH DATA BUTTON
 if st.sidebar.button("🔄 Refresh Data"):
     st.rerun()
 
 if st.sidebar.button("Logout"):
     st.session_state['logged_in'] = False
-    st.query_params.clear() # Clear URL so they can't auto-login
+    st.query_params.clear()
     st.rerun()
 
 def phone_call_btn(phone_number):
