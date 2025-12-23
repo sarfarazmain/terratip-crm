@@ -9,8 +9,9 @@ import time
 # --- CONFIGURATION ---
 st.set_page_config(page_title="TerraTip CRM", layout="wide", page_icon="🏡")
 
-# --- HIDE STREAMLIT BRANDING ---
-hide_bar = """
+# --- HIDE BRANDING & CUSTOM MOBILE CSS ---
+# We are adding custom CSS to make buttons big and cards distinct
+custom_css = """
     <style>
         header {visibility: hidden;}
         #MainMenu {visibility: hidden;}
@@ -18,9 +19,31 @@ hide_bar = """
         .stAppDeployButton {display: none;}
         [data-testid="stElementToolbar"] {display: none;}
         [data-testid="stDecoration"] {display: none;}
+        
+        /* MOBILE CARD STYLING */
+        [data-testid="stExpander"] {
+            background-color: #1E1E1E;
+            border: 1px solid #444;
+            border-radius: 8px;
+            margin-bottom: 10px;
+        }
+        
+        /* BIG BUTTONS FOR MOBILE */
+        .big-btn {
+            display: block;
+            width: 100%;
+            padding: 10px;
+            text-align: center;
+            border-radius: 5px;
+            text-decoration: none;
+            font-weight: bold;
+            font-size: 16px;
+        }
+        .call-btn { background-color: #28a745; color: white !important; }
+        .wa-btn { background-color: #25D366; color: white !important; }
     </style>
 """
-st.markdown(hide_bar, unsafe_allow_html=True)
+st.markdown(custom_css, unsafe_allow_html=True)
 
 # --- GLOBAL MESSAGE RELAY ---
 def set_feedback(message, type="success"):
@@ -129,7 +152,12 @@ st.sidebar.write(f"👤 **{st.session_state['name']}**")
 if st.sidebar.button("Logout"):
     st.session_state['logged_in'] = False; st.query_params.clear(); st.rerun()
 
-def phone_btn(num): return f"""<a href="tel:{num}" style="display:inline-block;background-color:#28a745;color:white;padding:5px 12px;border-radius:4px;text-decoration:none;">📞 Call</a>"""
+# --- BIG BUTTON HELPER ---
+def big_call_btn(num):
+    return f"""<a href="tel:{num}" class="big-btn call-btn">📞 CALL NOW</a>"""
+
+def big_wa_btn(num, name):
+    return f"""<a href="https://wa.me/91{num}?text=Namaste {name}" class="big-btn wa-btn" target="_blank">💬 WHATSAPP</a>"""
 
 @st.fragment(run_every=10)
 def show_live_leads_list(users_df):
@@ -138,10 +166,9 @@ def show_live_leads_list(users_df):
 
     # --- SEARCH & FILTER ---
     c_search, c_filter = st.columns([2, 1])
-    search_query = c_search.text_input("🔍 Search", placeholder="Name or Phone...")
+    search_query = c_search.text_input("🔍 Search", placeholder="Name / Phone")
     status_filter = c_filter.multiselect("Filter", df['Status'].unique() if 'Status' in df.columns else [])
 
-    # Role Filter
     if st.session_state['role'] == "Telecaller":
         c_match = [c for c in df.columns if "Assigned" in c]
         if c_match:
@@ -149,42 +176,26 @@ def show_live_leads_list(users_df):
                     (df[c_match[0]] == st.session_state['name']) |
                     (df[c_match[0]] == "TC1")]
 
-    # Apply Search
     if search_query:
         df = df[df.astype(str).apply(lambda x: x.str.contains(search_query, case=False)).any(axis=1)]
     if status_filter:
         df = df[df['Status'].isin(status_filter)]
 
-    # --- INTELLIGENT SORTING (The "Naya First" Logic) ---
-    # We create a 'Priority' column to sort by
-    # 0 = Naya Lead, 1 = Reminders (Today/Overdue), 2 = Others
-    
+    # --- INTELLIGENT SORTING ---
     today = date.today()
-    
     def get_priority(row):
         status = row.get('Status', '')
-        f_date_str = str(row.get('Next Followup', '')).strip() # Assuming 'Next Followup' is header name in sheet
-        
-        # 1. Top Priority: Fresh Leads
+        f_date_str = str(row.get('Next Followup', '')).strip()
         if "Naya" in status: return 0
-        
-        # 2. Second Priority: Overdue/Today Reminders
         if f_date_str and len(f_date_str) > 5:
             try:
-                f_date = datetime.strptime(f_date_str, "%Y-%m-%d").date()
-                if f_date <= today: return 1
+                if datetime.strptime(f_date_str, "%Y-%m-%d").date() <= today: return 1
             except: pass
-            
-        # 3. Last Priority: Everything else
         return 2
 
     if not df.empty:
-        # Detect Followup column dynamically
         f_col = next((c for c in df.columns if "Follow" in c), None)
-        if f_col:
-            # Rename for helper function
-            df['Next Followup'] = df[f_col]
-        
+        if f_col: df['Next Followup'] = df[f_col]
         df['Priority'] = df.apply(get_priority, axis=1)
         df = df.sort_values(by='Priority', ascending=True)
 
@@ -202,43 +213,40 @@ def show_live_leads_list(users_df):
         phone = str(row.get('Phone', '')).replace(',', '').replace('.', '')
         assigned_to = row.get('Assigned', '-')
         
-        # Visual Icon Logic
         icon = "⚪"
         if "Sold" in status: icon = "🟢"
         elif "Faltu" in status: icon = "🔴"
         elif "Visit" in status: icon = "🚕"
         elif "Naya" in status: icon = "⚡"
-        elif "Busy" in status: icon = "⏰"
         
-        # Reminder Logic Display
-        reminder_alert = ""
-        if row.get('Priority') == 1:
-            reminder_alert = "🔔 **CALL DUE** | "
+        alert = "🔔 CALL DUE | " if row.get('Priority') == 1 else ""
 
-        with st.expander(f"{icon} {reminder_alert}{name}  [{status}]"):
-            c1, c2, c3 = st.columns([2, 1, 1])
-            with c1:
-                st.write(f"📞 **{phone}**")
-                st.write(f"📌 {row.get('Source', '-')}")
-                st.caption(f"Assigned: {assigned_to}")
-            with c2: st.markdown(phone_btn(phone), unsafe_allow_html=True)
-            with c3: st.link_button("WhatsApp", f"https://wa.me/91{phone}")
+        with st.expander(f"{icon} {alert}{name}"):
+            # --- ROW 1: BIG BUTTONS (Thumb Friendly) ---
+            b1, b2 = st.columns(2)
+            with b1: st.markdown(big_call_btn(phone), unsafe_allow_html=True)
+            with b2: st.markdown(big_wa_btn(phone, name), unsafe_allow_html=True)
             
+            st.write("") # Spacer
+
+            # --- ROW 2: DETAILS ---
+            st.markdown(f"**📞 {phone}** | 📌 {row.get('Source', '-')}")
+            if st.session_state['role'] == "Manager":
+                st.caption(f"Assigned: {assigned_to}")
+
+            # --- ROW 3: UPDATE FORM ---
             with st.form(f"u_{i}"):
                 c_u1, c_u2 = st.columns(2)
                 ns = c_u1.selectbox("Status", status_opts, key=f"s_{i}", index=status_opts.index(status) if status in status_opts else 0)
-                note = st.text_input("Note", key=f"n_{i}")
+                note = st.text_input("Note", key=f"n_{i}", placeholder="Client said...")
 
-                # --- UX UPGRADE: QUICK DATE BUTTONS ---
                 st.write("📅 **Next Follow-up:**")
-                date_option = st.radio("Quick Select:", ["None", "Tomorrow", "3 Days", "1 Week", "Custom Date"], horizontal=True, key=f"radio_{i}")
+                date_option = st.radio("Quick Select:", ["None", "Tomorrow", "3 Days", "1 Week"], horizontal=True, key=f"radio_{i}")
                 
                 final_date = None
                 if date_option == "Tomorrow": final_date = today + timedelta(days=1)
                 elif date_option == "3 Days": final_date = today + timedelta(days=3)
                 elif date_option == "1 Week": final_date = today + timedelta(days=7)
-                elif date_option == "Custom Date":
-                    final_date = st.date_input("Pick Date", min_value=today, key=f"custom_d_{i}")
                 
                 new_assign = None
                 if st.session_state['role'] == "Manager":
@@ -246,15 +254,13 @@ def show_live_leads_list(users_df):
                     except: curr_idx = 0
                     new_assign = st.selectbox("Assign To:", all_telecallers, index=curr_idx, key=f"a_{i}")
 
-                if st.form_submit_button("Update"):
+                if st.form_submit_button("💾 UPDATE STATUS", type="primary", use_container_width=True):
                     try:
                         h = leads_sheet.row_values(1)
                         s_idx = h.index("Status")+1 if "Status" in h else 8
                         n_idx = h.index("Notes")+1 if "Notes" in h else 12
                         a_idx = h.index("Assigned")+1 if "Assigned" in h else 7
                         t_idx = h.index("Last Call")+1 if "Last Call" in h else 10
-                        
-                        # Dynamic Follow-up Column
                         f_idx = 15
                         for idx, col_name in enumerate(h):
                             if "Follow" in col_name: f_idx = idx + 1; break
@@ -263,7 +269,6 @@ def show_live_leads_list(users_df):
                         if succ:
                             if note: robust_update(leads_sheet, phone, n_idx, note)
                             if final_date: robust_update(leads_sheet, phone, f_idx, str(final_date))
-                            
                             robust_update(leads_sheet, phone, t_idx, datetime.now().strftime("%Y-%m-%d %H:%M"))
                             if new_assign and new_assign != assigned_to:
                                 robust_update(leads_sheet, phone, a_idx, new_assign)
@@ -285,7 +290,7 @@ def show_add_lead_form(users_df):
             all_u = users_df['Username'].tolist()
             assign = st.selectbox("Assign To", all_u, index=all_u.index(assign) if assign in all_u else 0)
         
-        if st.button("Save Lead"):
+        if st.button("Save Lead", use_container_width=True):
             if not name or not phone: st.error("⚠️ Required fields missing")
             else:
                 try:
