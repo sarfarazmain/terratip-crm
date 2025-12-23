@@ -122,9 +122,8 @@ def show_crm_dashboard(users_df):
                 (leads_df[col_match[0]] == "TC1")
             ]
 
-    # 3. ADD NEW LEAD (INTERACTIVE SECTION)
+    # 3. ADD NEW LEAD
     with st.expander("➕ Add New Lead", expanded=False):
-        # We use standard widgets (not st.form) to allow "Unlock" logic
         c1, c2 = st.columns(2)
         name = c1.text_input("Client Name")
         phone = c2.text_input("Phone Number (10 Digits)")
@@ -132,35 +131,27 @@ def show_crm_dashboard(users_df):
         c3, c4 = st.columns(2)
         source = c3.selectbox("Source", ["Meta Ads", "Canopy", "Agent", "Others"])
         
-        # DYNAMIC FIELD: Only show if Agent is selected
         agent_name = ""
         if source == "Agent":
             agent_name = c4.text_input("Enter Agent Name")
         
-        # ASSIGNMENT LOGIC
-        assigned_to = st.session_state['username'] # Default to self
+        assigned_to = st.session_state['username'] 
         if st.session_state['role'] == "Manager":
-            # Manager can assign to anyone
             all_users = users_df['Username'].tolist()
             assigned_to = st.selectbox("Assign Lead To", all_users, index=all_users.index(st.session_state['username']) if st.session_state['username'] in all_users else 0)
         
-        # SAVE BUTTON
         if st.button("Save Lead", type="primary"):
-            # Validation
             if not name:
                 st.error("⚠️ Client Name is required.")
             elif not phone.isdigit() or len(phone) != 10:
-                st.error("⚠️ Invalid Phone Number. Please enter exactly 10 digits (no spaces, no +91).")
+                st.error("⚠️ Invalid Phone Number.")
             elif source == "Agent" and not agent_name:
-                st.error("⚠️ You selected 'Agent' but didn't enter the Agent's Name.")
+                st.error("⚠️ Agent Name is required.")
             else:
-                # Save to Sheet
                 ts = datetime.now().strftime("%Y-%m-%d %H:%M")
-                # Structure: [ID, Time, Name, Phone, Source, Agent Name, Assigned, Status]
-                # We save 'agent_name' in Column F (Agent Name) and 'assigned_to' in Column G (Assigned)
                 new_row = ["L-New", ts, name, phone, source, agent_name, assigned_to, "Naya"]
                 leads_sheet.append_row(new_row)
-                st.success(f"✅ Lead '{name}' assigned to {assigned_to}!")
+                st.success(f"✅ Saved & Assigned to {assigned_to}!")
                 st.rerun()
 
     # 4. Display Leads
@@ -171,33 +162,47 @@ def show_crm_dashboard(users_df):
     if leads_df.empty:
         st.info("No leads found.")
 
+    # --- INSTRUCTION LOGIC ---
+    def get_instruction(status):
+        if status == "Naya": return "📞 ACTION: Call this client immediately and introduce the project."
+        if status == "Call Done": return "📅 ACTION: Push for a Site Visit date. Schedule it below."
+        if status == "Site Visit Scheduled": return "📍 ACTION: Confirm the visit time 2 hours before."
+        if status == "No Show": return "🔄 ACTION: Client missed visit. Call to Reschedule."
+        if status == "Lost": return "❌ ACTION: Do not call again. Focus on other leads."
+        if status == "Sold": return "🎉 ACTION: Ensure booking amount is received."
+        return "❓ ACTION: Update the status."
+
     for i, row in leads_df.iterrows():
         name = row.get('Client Name', 'Unknown')
         status = row.get('Status', 'Naya')
         phone = str(row.get('Phone', '')).replace(',', '').replace('.', '')
         
+        # Color coding
         icon = "⚪"
         if status == "Sold": icon = "🟢"
         if status == "Lost": icon = "🔴"
         if status == "Site Visit Scheduled": icon = "🚕"
+        if status == "Naya": icon = "⚡"
         
         with st.expander(f"{icon} {name} | {status}"):
+            # THE INSTRUCTION BOX
+            instruction = get_instruction(status)
+            st.info(instruction)
+            
             c1, c2 = st.columns([2, 1])
             with c1:
                 st.write(f"📞 **{phone}**")
                 st.write(f"📌 Source: {row.get('Source', '-')}")
-                # Show Agent Name if it exists
-                if row.get('Agent Name'):
-                    st.write(f"👤 Agent: {row.get('Agent Name')}")
+                if row.get('Agent Name'): st.write(f"👤 Agent: {row.get('Agent Name')}")
                 st.caption(f"Assigned: {row.get('Assigned', '-')}")
                 
             with c2:
                 st.link_button("WhatsApp", f"https://wa.me/91{phone}?text=Namaste {name}")
             
             with st.form(f"u_{i}"):
-                ns = st.selectbox("Status", ["Naya", "Call Done", "Site Visit Scheduled", "Lost", "Sold"], key=f"s_{i}")
-                note = st.text_input("Note", key=f"n_{i}")
-                if st.form_submit_button("Update"):
+                ns = st.selectbox("Change Status", ["Naya", "Call Done", "Site Visit Scheduled", "No Show", "Lost", "Sold"], key=f"s_{i}")
+                note = st.text_input("Add Note", key=f"n_{i}")
+                if st.form_submit_button("Update Status"):
                     try:
                         head = leads_sheet.row_values(1)
                         s_idx = head.index("Status") + 1
@@ -214,13 +219,11 @@ def show_crm_dashboard(users_df):
 
 def show_admin_panel(users_df, users_sheet):
     st.header("⚙️ Admin Panel")
-    
     if 'admin_msg' in st.session_state and st.session_state['admin_msg']:
         st.success(st.session_state['admin_msg'])
         st.session_state['admin_msg'] = None
 
     ac1, ac2 = st.columns([1, 2])
-    
     with ac1:
         st.subheader("Create User")
         with st.form("new_user", clear_on_submit=True):
@@ -228,48 +231,34 @@ def show_admin_panel(users_df, users_sheet):
             new_p = st.text_input("Password", type="password")
             new_n = st.text_input("Full Name")
             new_r = st.selectbox("Role", ["Telecaller", "Sales Specialist", "Manager"])
-            
             if st.form_submit_button("Create User"):
                 if new_u and new_p:
                     if new_u in users_df['Username'].values:
-                        st.error(f"User '{new_u}' already exists!")
+                        st.error("User exists!")
                     else:
                         users_sheet.append_row([new_u, hash_pass(new_p), new_r, new_n])
-                        st.session_state['admin_msg'] = f"✅ Created user: {new_u}"
+                        st.session_state['admin_msg'] = f"✅ Created {new_u}"
                         st.rerun()
-    
     with ac2:
-        st.subheader("Existing Users")
-        display_df = users_df[['Name', 'Username', 'Role']]
-        st.dataframe(display_df, use_container_width=True, hide_index=True)
-        
+        st.subheader("Manage Users")
+        st.dataframe(users_df[['Name', 'Username', 'Role']], use_container_width=True, hide_index=True)
         st.divider()
-        st.subheader("Delete User")
-        
         options = [u for u in users_df['Username'].unique() if u != st.session_state['username']]
         if options:
             c_del_1, c_del_2 = st.columns([3,1])
             with c_del_1:
-                delete_target = st.selectbox("Select User to Remove", options, label_visibility="collapsed")
+                del_target = st.selectbox("Select User", options, label_visibility="collapsed")
             with c_del_2:
                 if st.button("❌ DELETE", type="primary"):
-                    try:
-                        cell = users_sheet.find(delete_target)
-                        users_sheet.delete_rows(cell.row)
-                        st.session_state['admin_msg'] = f"🗑️ Deleted user: {delete_target}"
-                        st.rerun()
-                    except Exception as e:
-                        st.error(f"Error: {e}")
-        else:
-            st.info("No users to delete.")
+                    cell = users_sheet.find(del_target)
+                    users_sheet.delete_rows(cell.row)
+                    st.session_state['admin_msg'] = f"🗑️ Deleted {del_target}"
+                    st.rerun()
 
 # --- 5. MAIN PAGE LOGIC ---
-
 if st.session_state['role'] == "Manager":
     tab1, tab2 = st.tabs(["🏡 CRM Dashboard", "⚙️ Admin Panel"])
-    with tab1:
-        show_crm_dashboard(users_df)
-    with tab2:
-        show_admin_panel(users_df, users_sheet)
+    with tab1: show_crm_dashboard(users_df)
+    with tab2: show_admin_panel(users_df, users_sheet)
 else:
     show_crm_dashboard(users_df)
