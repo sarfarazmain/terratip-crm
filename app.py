@@ -2,7 +2,7 @@ import streamlit as st
 import pandas as pd
 import gspread
 from google.oauth2.service_account import Credentials
-from datetime import datetime, date
+from datetime import datetime, date, timedelta
 import hashlib
 import time
 
@@ -131,53 +131,6 @@ if st.sidebar.button("Logout"):
 
 def phone_btn(num): return f"""<a href="tel:{num}" style="display:inline-block;background-color:#28a745;color:white;padding:5px 12px;border-radius:4px;text-decoration:none;">📞 Call</a>"""
 
-# --- REMINDER LOGIC ---
-def show_reminders_section(df):
-    if df.empty: return
-    
-    # Try to find the Follow-up column
-    col_name = next((c for c in df.columns if "Follow" in c), None)
-    if not col_name: return # No column found, skip feature
-    
-    today = date.today()
-    reminders = []
-    
-    for i, row in df.iterrows():
-        f_date_str = str(row[col_name]).strip()
-        if f_date_str and len(f_date_str) > 5: # Simple check for valid string
-            try:
-                # Support multiple formats
-                try: f_date = datetime.strptime(f_date_str, "%Y-%m-%d").date()
-                except: f_date = datetime.strptime(f_date_str, "%d/%m/%Y").date()
-                
-                # Logic: Overdue OR Due Today
-                if f_date <= today and "Sold" not in row['Status'] and "Faltu" not in row['Status']:
-                    reminders.append({
-                        "Name": row.get('Client Name', 'Unknown'),
-                        "Phone": str(row.get('Phone', '')),
-                        "Date": f_date,
-                        "Status": row.get('Status', '-')
-                    })
-            except: pass # Ignore bad date formats
-
-    if reminders:
-        # Sort: Oldest date first (Overdue first)
-        reminders.sort(key=lambda x: x['Date'])
-        
-        st.warning(f"🔔 **Action Plan: {len(reminders)} Calls Due Today!**")
-        
-        with st.expander("👀 Click to see who to call", expanded=True):
-            for r in reminders:
-                is_overdue = r['Date'] < today
-                color = "🔴" if is_overdue else "🟡"
-                msg = "OVERDUE (Missed Call)" if is_overdue else "Call Today"
-                
-                c1, c2, c3 = st.columns([2, 1, 1])
-                with c1: st.write(f"**{color} {r['Name']}** ({msg})")
-                with c2: st.markdown(phone_btn(r['Phone']), unsafe_allow_html=True)
-                with c3: st.link_button("WhatsApp", f"https://wa.me/91{r['Phone']}")
-                st.divider()
-
 @st.fragment(run_every=10)
 def show_live_leads_list(users_df):
     try: data = leads_sheet.get_all_records(); df = pd.DataFrame(data)
@@ -202,8 +155,38 @@ def show_live_leads_list(users_df):
     if status_filter:
         df = df[df['Status'].isin(status_filter)]
 
-    # --- SHOW REMINDERS (The New Feature) ---
-    show_reminders_section(df)
+    # --- INTELLIGENT SORTING (The "Naya First" Logic) ---
+    # We create a 'Priority' column to sort by
+    # 0 = Naya Lead, 1 = Reminders (Today/Overdue), 2 = Others
+    
+    today = date.today()
+    
+    def get_priority(row):
+        status = row.get('Status', '')
+        f_date_str = str(row.get('Next Followup', '')).strip() # Assuming 'Next Followup' is header name in sheet
+        
+        # 1. Top Priority: Fresh Leads
+        if "Naya" in status: return 0
+        
+        # 2. Second Priority: Overdue/Today Reminders
+        if f_date_str and len(f_date_str) > 5:
+            try:
+                f_date = datetime.strptime(f_date_str, "%Y-%m-%d").date()
+                if f_date <= today: return 1
+            except: pass
+            
+        # 3. Last Priority: Everything else
+        return 2
+
+    if not df.empty:
+        # Detect Followup column dynamically
+        f_col = next((c for c in df.columns if "Follow" in c), None)
+        if f_col:
+            # Rename for helper function
+            df['Next Followup'] = df[f_col]
+        
+        df['Priority'] = df.apply(get_priority, axis=1)
+        df = df.sort_values(by='Priority', ascending=True)
 
     if df.empty:
         st.info("📭 No leads found.")
@@ -219,34 +202,43 @@ def show_live_leads_list(users_df):
         phone = str(row.get('Phone', '')).replace(',', '').replace('.', '')
         assigned_to = row.get('Assigned', '-')
         
-        # Current Follow-up Date
-        f_col = next((c for c in df.columns if "Follow" in c), None)
-        curr_follow_date = None
-        if f_col and row.get(f_col):
-            try: curr_follow_date = datetime.strptime(str(row.get(f_col)), "%Y-%m-%d").date()
-            except: pass
-
+        # Visual Icon Logic
         icon = "⚪"
         if "Sold" in status: icon = "🟢"
         elif "Faltu" in status: icon = "🔴"
         elif "Visit" in status: icon = "🚕"
         elif "Naya" in status: icon = "⚡"
+        elif "Busy" in status: icon = "⏰"
         
-        with st.expander(f"{icon} {name} | {status}"):
+        # Reminder Logic Display
+        reminder_alert = ""
+        if row.get('Priority') == 1:
+            reminder_alert = "🔔 **CALL DUE** | "
+
+        with st.expander(f"{icon} {reminder_alert}{name}  [{status}]"):
             c1, c2, c3 = st.columns([2, 1, 1])
             with c1:
                 st.write(f"📞 **{phone}**")
                 st.write(f"📌 {row.get('Source', '-')}")
                 st.caption(f"Assigned: {assigned_to}")
             with c2: st.markdown(phone_btn(phone), unsafe_allow_html=True)
-            with c3: st.link_button("💬 WhatsApp", f"https://wa.me/91{phone}")
+            with c3: st.link_button("WhatsApp", f"https://wa.me/91{phone}")
             
             with st.form(f"u_{i}"):
                 c_u1, c_u2 = st.columns(2)
                 ns = c_u1.selectbox("Status", status_opts, key=f"s_{i}", index=status_opts.index(status) if status in status_opts else 0)
-                # DATE PICKER for Reminder
-                new_date = c_u2.date_input("📅 Next Follow-up", value=curr_follow_date, key=f"d_{i}")
                 note = st.text_input("Note", key=f"n_{i}")
+
+                # --- UX UPGRADE: QUICK DATE BUTTONS ---
+                st.write("📅 **Next Follow-up:**")
+                date_option = st.radio("Quick Select:", ["None", "Tomorrow", "3 Days", "1 Week", "Custom Date"], horizontal=True, key=f"radio_{i}")
+                
+                final_date = None
+                if date_option == "Tomorrow": final_date = today + timedelta(days=1)
+                elif date_option == "3 Days": final_date = today + timedelta(days=3)
+                elif date_option == "1 Week": final_date = today + timedelta(days=7)
+                elif date_option == "Custom Date":
+                    final_date = st.date_input("Pick Date", min_value=today, key=f"custom_d_{i}")
                 
                 new_assign = None
                 if st.session_state['role'] == "Manager":
@@ -262,18 +254,15 @@ def show_live_leads_list(users_df):
                         a_idx = h.index("Assigned")+1 if "Assigned" in h else 7
                         t_idx = h.index("Last Call")+1 if "Last Call" in h else 10
                         
-                        # Find dynamic Follow-up column or default to 15 (O)
+                        # Dynamic Follow-up Column
                         f_idx = 15
                         for idx, col_name in enumerate(h):
-                            if "Follow" in col_name:
-                                f_idx = idx + 1
-                                break
+                            if "Follow" in col_name: f_idx = idx + 1; break
                         
                         succ, msg = robust_update(leads_sheet, phone, s_idx, ns)
                         if succ:
                             if note: robust_update(leads_sheet, phone, n_idx, note)
-                            # Save Date as YYYY-MM-DD
-                            if new_date: robust_update(leads_sheet, phone, f_idx, str(new_date))
+                            if final_date: robust_update(leads_sheet, phone, f_idx, str(final_date))
                             
                             robust_update(leads_sheet, phone, t_idx, datetime.now().strftime("%Y-%m-%d %H:%M"))
                             if new_assign and new_assign != assigned_to:
@@ -305,9 +294,6 @@ def show_add_lead_form(users_df):
                 except: pass
                 
                 ts = datetime.now().strftime("%Y-%m-%d %H:%M")
-                # Append row. Make sure to add empty strings for columns we skip until Status/Follow-up
-                # A=1, B=2, C=3, D=4, E=5, F=6, G=7, H=8(Status), I=9, J=10(LastCall)... O=15(FollowUp)
-                # Use a safe length
                 row_data = ["L-New", ts, name, phone, src, ag, assign, "Naya Lead", "", ts, "", "", "", "", ""] 
                 leads_sheet.append_row(row_data)
                 set_feedback(f"✅ Saved {name}")
