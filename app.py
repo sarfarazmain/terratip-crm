@@ -191,4 +191,186 @@ def show_live_leads_list(users_df):
     # Role Filter
     if st.session_state['role'] == "Telecaller":
         c_match = [c for c in df.columns if "Assigned" in c]
-        if c_
+        if c_match:
+            df = df[(df[c_match[0]] == st.session_state['username']) | 
+                    (df[c_match[0]] == st.session_state['name']) |
+                    (df[c_match[0]] == "TC1")]
+
+    # Apply Search
+    if search_query:
+        df = df[df.astype(str).apply(lambda x: x.str.contains(search_query, case=False)).any(axis=1)]
+    if status_filter:
+        df = df[df['Status'].isin(status_filter)]
+
+    # --- SHOW REMINDERS (The New Feature) ---
+    show_reminders_section(df)
+
+    if df.empty:
+        st.info("📭 No leads found.")
+        return
+
+    st.caption(f"⚡ Live: {len(df)} Leads")
+    status_opts = ["Naya Lead", "Call Uthaya Nahi / Busy", "Baat Hui - Interested", "Site Visit Scheduled", "Visit Done - Soch Raha Hai", "Faltu / Agent / Spam", "Not Interested (Mehenga Hai)", "Sold (Plot Bik Gaya)"]
+    all_telecallers = users_df['Username'].tolist()
+
+    for i, row in df.iterrows():
+        name = row.get('Client Name', 'Unknown')
+        status = row.get('Status', 'Naya Lead')
+        phone = str(row.get('Phone', '')).replace(',', '').replace('.', '')
+        assigned_to = row.get('Assigned', '-')
+        
+        # Current Follow-up Date
+        f_col = next((c for c in df.columns if "Follow" in c), None)
+        curr_follow_date = None
+        if f_col and row.get(f_col):
+            try: curr_follow_date = datetime.strptime(str(row.get(f_col)), "%Y-%m-%d").date()
+            except: pass
+
+        icon = "⚪"
+        if "Sold" in status: icon = "🟢"
+        elif "Faltu" in status: icon = "🔴"
+        elif "Visit" in status: icon = "🚕"
+        elif "Naya" in status: icon = "⚡"
+        
+        with st.expander(f"{icon} {name} | {status}"):
+            c1, c2, c3 = st.columns([2, 1, 1])
+            with c1:
+                st.write(f"📞 **{phone}**")
+                st.write(f"📌 {row.get('Source', '-')}")
+                st.caption(f"Assigned: {assigned_to}")
+            with c2: st.markdown(phone_btn(phone), unsafe_allow_html=True)
+            with c3: st.link_button("💬 WhatsApp", f"https://wa.me/91{phone}")
+            
+            with st.form(f"u_{i}"):
+                c_u1, c_u2 = st.columns(2)
+                ns = c_u1.selectbox("Status", status_opts, key=f"s_{i}", index=status_opts.index(status) if status in status_opts else 0)
+                # DATE PICKER for Reminder
+                new_date = c_u2.date_input("📅 Next Follow-up", value=curr_follow_date, key=f"d_{i}")
+                note = st.text_input("Note", key=f"n_{i}")
+                
+                new_assign = None
+                if st.session_state['role'] == "Manager":
+                    try: curr_idx = all_telecallers.index(assigned_to)
+                    except: curr_idx = 0
+                    new_assign = st.selectbox("Assign To:", all_telecallers, index=curr_idx, key=f"a_{i}")
+
+                if st.form_submit_button("Update"):
+                    try:
+                        h = leads_sheet.row_values(1)
+                        s_idx = h.index("Status")+1 if "Status" in h else 8
+                        n_idx = h.index("Notes")+1 if "Notes" in h else 12
+                        a_idx = h.index("Assigned")+1 if "Assigned" in h else 7
+                        t_idx = h.index("Last Call")+1 if "Last Call" in h else 10
+                        
+                        # Find dynamic Follow-up column or default to 15 (O)
+                        f_idx = 15
+                        for idx, col_name in enumerate(h):
+                            if "Follow" in col_name:
+                                f_idx = idx + 1
+                                break
+                        
+                        succ, msg = robust_update(leads_sheet, phone, s_idx, ns)
+                        if succ:
+                            if note: robust_update(leads_sheet, phone, n_idx, note)
+                            # Save Date as YYYY-MM-DD
+                            if new_date: robust_update(leads_sheet, phone, f_idx, str(new_date))
+                            
+                            robust_update(leads_sheet, phone, t_idx, datetime.now().strftime("%Y-%m-%d %H:%M"))
+                            if new_assign and new_assign != assigned_to:
+                                robust_update(leads_sheet, phone, a_idx, new_assign)
+                            set_feedback(f"✅ Updated {name}")
+                            st.rerun()
+                        else: st.error(msg)
+                    except Exception as e: st.error(f"Err: {e}")
+
+def show_add_lead_form(users_df):
+    with st.expander("➕ Naya Lead Jodein", expanded=False):
+        c1, c2 = st.columns(2)
+        name = c1.text_input("Name"); phone = c2.text_input("Phone")
+        c3, c4 = st.columns(2)
+        src = c3.selectbox("Source", ["Meta Ads", "Canopy", "Agent", "Others"])
+        ag = c4.text_input("Agent Name") if src == "Agent" else ""
+        
+        assign = st.session_state['username']
+        if st.session_state['role'] == "Manager":
+            all_u = users_df['Username'].tolist()
+            assign = st.selectbox("Assign To", all_u, index=all_u.index(assign) if assign in all_u else 0)
+        
+        if st.button("Save Lead"):
+            if not name or not phone: st.error("⚠️ Required fields missing")
+            else:
+                try:
+                    all_phones = leads_sheet.col_values(4)
+                    if phone in all_phones: st.error(f"⚠️ Phone {phone} exists!"); return
+                except: pass
+                
+                ts = datetime.now().strftime("%Y-%m-%d %H:%M")
+                # Append row. Make sure to add empty strings for columns we skip until Status/Follow-up
+                # A=1, B=2, C=3, D=4, E=5, F=6, G=7, H=8(Status), I=9, J=10(LastCall)... O=15(FollowUp)
+                # Use a safe length
+                row_data = ["L-New", ts, name, phone, src, ag, assign, "Naya Lead", "", ts, "", "", "", "", ""] 
+                leads_sheet.append_row(row_data)
+                set_feedback(f"✅ Saved {name}")
+                st.rerun()
+
+def show_master_insights():
+    st.header("📊 Analytics")
+    try: df = pd.DataFrame(leads_sheet.get_all_records())
+    except: return
+    if df.empty: st.info("No data"); return
+
+    st.subheader("1️⃣ Business Pulse")
+    tot = len(df); sold = len(df[df['Status'].str.contains("Sold", na=False)])
+    junk = len(df[df['Status'].str.contains("Faltu", na=False)])
+    m1,m2,m3 = st.columns(3)
+    m1.metric("Total", tot); m2.metric("Sold", sold); m3.metric("Junk", junk)
+    
+    st.subheader("2️⃣ Team Activity")
+    if 'Assigned' in df.columns:
+        summ = []
+        for tc in df['Assigned'].unique():
+            tdf = df[df['Assigned'] == tc]
+            pend = len(tdf[tdf['Status'] == 'Naya Lead'])
+            work = len(tdf[tdf['Status'].str.contains("Busy|Interested|Visit", na=False)])
+            last = "-"
+            if 'Last Call' in tdf.columns:
+                ts = [x for x in tdf['Last Call'] if x]
+                if ts: last = max(ts)
+            summ.append({"User": tc, "Total": len(tdf), "⚠️ Pending": pend, "🔥 Active": work, "🕒 Last Active": last})
+        st.dataframe(pd.DataFrame(summ), use_container_width=True, hide_index=True)
+
+def show_admin(users_df):
+    st.header("⚙️ Admin")
+    show_feedback()
+    c1, c2 = st.columns([1,2])
+    with c1:
+        with st.form("nu", clear_on_submit=True):
+            u = st.text_input("User"); p = st.text_input("Pass", type="password")
+            n = st.text_input("Name"); r = st.selectbox("Role", ["Telecaller", "Sales Specialist", "Manager"])
+            if st.form_submit_button("Create"):
+                if u in users_df['Username'].values: st.error("Exists")
+                else: 
+                    users_sheet.append_row([u, hash_pass(p), r, n])
+                    set_feedback(f"✅ Created {u}"); st.rerun()
+    with c2:
+        st.dataframe(users_df[['Name','Username','Role']], hide_index=True)
+        opts = [x for x in users_df['Username'].unique() if x != st.session_state['username']]
+        if opts:
+            dt = st.selectbox("Delete", opts)
+            if st.button("❌ Delete"):
+                users_sheet.delete_rows(users_sheet.find(dt).row)
+                set_feedback(f"Deleted {dt}"); st.rerun()
+
+def show_dashboard(users_df):
+    show_feedback()
+    show_add_lead_form(users_df)
+    st.divider()
+    show_live_leads_list(users_df)
+
+if st.session_state['role'] == "Manager":
+    t1, t2, t3 = st.tabs(["🏠 CRM", "📊 Insights", "⚙️ Admin"])
+    with t1: show_dashboard(users_df)
+    with t2: show_master_insights()
+    with t3: show_admin(users_df)
+else:
+    show_dashboard(users_df)
