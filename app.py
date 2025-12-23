@@ -4,6 +4,7 @@ import gspread
 from google.oauth2.service_account import Credentials
 from datetime import datetime
 import hashlib
+import time
 
 # --- CONFIGURATION ---
 st.set_page_config(page_title="TerraTip CRM", layout="wide", page_icon="🏡")
@@ -66,6 +67,30 @@ def check_credentials(username, password, users_df):
             return user_row.iloc[0]
     return None
 
+# --- ROBUST UPDATE FUNCTION (THE FIX) ---
+def robust_update(sheet, phone_number, col_index, value):
+    """Finds the row by Phone Number before updating. Prevents row mismatch errors."""
+    try:
+        # Find cell with the specific phone number
+        # We assume Phone is in the first 5 columns to speed up search, or search whole sheet
+        cell = sheet.find(phone_number)
+        if cell:
+            sheet.update_cell(cell.row, col_index, value)
+            return True, "Updated"
+        else:
+            return False, "Lead not found (Deleted?)"
+    except gspread.exceptions.APIError:
+        time.sleep(1) # Wait and retry once if API is busy
+        try:
+            cell = sheet.find(phone_number)
+            if cell:
+                sheet.update_cell(cell.row, col_index, value)
+                return True, "Updated"
+        except:
+            return False, "API Error (Try again)"
+    except Exception as e:
+        return False, str(e)
+
 # --- 2. INITIALIZATION ---
 try:
     sh = connect_db()
@@ -117,28 +142,18 @@ if st.sidebar.button("Logout"):
     st.session_state['logged_in'] = False
     st.rerun()
 
-# --- HELPER: PHONE CALL BUTTON (HTML HACK) ---
 def phone_call_btn(phone_number):
-    # This creates a clickable HTML link that triggers the phone dialer
-    return f"""<a href="tel:{phone_number}" style="
-        display: inline-block;
-        background-color: #28a745;
-        color: white;
-        padding: 5px 12px;
-        text-align: center;
-        text-decoration: none;
-        font-size: 14px;
-        border-radius: 4px;
-        border: none;
-        cursor: pointer;">📞 Call</a>"""
+    return f"""<a href="tel:{phone_number}" style="display:inline-block;background-color:#28a745;color:white;padding:5px 12px;border-radius:4px;text-decoration:none;">📞 Call</a>"""
 
 # --- VIEW 1: LEADS DASHBOARD ---
 def show_crm_dashboard(users_df):
     show_feedback()
     
+    # Refresh data
     leads_data = leads_sheet.get_all_records()
     leads_df = pd.DataFrame(leads_data)
 
+    # Filter Logic
     if st.session_state['role'] == "Telecaller":
         col_match = [c for c in leads_df.columns if "Assigned" in c]
         if col_match:
@@ -166,7 +181,6 @@ def show_crm_dashboard(users_df):
         if st.button("💾 Save Lead", type="primary"):
             if not name: st.error("⚠️ Naam zaroori hai.")
             elif not phone.isdigit() or len(phone) != 10: st.error("⚠️ Phone number galat hai.")
-            elif source == "Agent" and not agent_name: st.error("⚠️ Agent ka naam zaroori hai.")
             else:
                 ts = datetime.now().strftime("%Y-%m-%d %H:%M")
                 new_row = ["L-New", ts, name, phone, source, agent_name, assigned_to, "Naya Lead"]
@@ -199,7 +213,6 @@ def show_crm_dashboard(users_df):
         if "Interested" in status: icon = "🔹"
         
         with st.expander(f"{icon} {name} | {status}"):
-            # Instruction Logic
             instr = "❓ Update Status"
             if "Naya" in status: instr = "⚡ ACTION: Abhi call karein."
             elif "Busy" in status: instr = "⏰ ACTION: 4 ghante baad try karein."
@@ -220,7 +233,6 @@ def show_crm_dashboard(users_df):
                 if row.get('Agent Name'): st.write(f"👤 {row.get('Agent Name')}")
                 st.caption(f"Assigned: {row.get('Assigned', '-')}")
             with c2:
-                # DIRECT CALL BUTTON
                 st.markdown(phone_call_btn(phone), unsafe_allow_html=True)
             with c3:
                 st.link_button("💬 WhatsApp", f"https://wa.me/91{phone}?text=Namaste {name}")
@@ -228,30 +240,36 @@ def show_crm_dashboard(users_df):
             with st.form(f"u_{i}"):
                 ns = st.selectbox("Status Badlein", status_options, key=f"s_{i}")
                 note = st.text_input("Note", key=f"n_{i}")
+                
                 if st.form_submit_button("💾 Update"):
+                    # --- NEW ROBUST UPDATE LOGIC ---
                     try:
                         headers = leads_sheet.row_values(1)
                         try: s_idx = headers.index("Status") + 1; n_idx = headers.index("Notes") + 1
                         except: s_idx=8; n_idx=12
-                        real_row = i + 2
-                        leads_sheet.update_cell(real_row, s_idx, ns)
-                        if note: leads_sheet.update_cell(real_row, n_idx, note)
-                        set_feedback(f"✅ Updated {name}")
-                        st.rerun()
-                    except: st.error("Error updating")
+                        
+                        # Use Phone Number to find exact row (Prevention of Race Condition)
+                        success, msg = robust_update(leads_sheet, phone, s_idx, ns)
+                        
+                        if success:
+                            if note: robust_update(leads_sheet, phone, n_idx, note)
+                            set_feedback(f"✅ {name} updated!")
+                            st.rerun()
+                        else:
+                            st.error(f"❌ Error: {msg}")
+                    except Exception as e:
+                        st.error(f"System Error: {e}")
 
-# --- VIEW 2: ANALYTICS DASHBOARD (THE BRAIN) ---
+# --- VIEW 2: ANALYTICS ---
 def show_analytics_dashboard():
-    st.header("📊 Business Insights (Owner Dashboard)")
-    
+    st.header("📊 Business Insights")
     leads_data = leads_sheet.get_all_records()
     df = pd.DataFrame(leads_data)
     
     if df.empty:
-        st.info("Not enough data for analytics.")
+        st.info("No data yet.")
         return
 
-    # 1. TOP METRICS
     total = len(df)
     sold = len(df[df['Status'].str.contains("Sold", na=False)])
     junk = len(df[df['Status'].str.contains("Faltu|Spam|Not Interested", na=False)])
@@ -259,69 +277,24 @@ def show_analytics_dashboard():
     
     m1, m2, m3, m4 = st.columns(4)
     m1.metric("Total Leads", total)
-    m2.metric("🎉 Sold (Deals)", sold)
-    m3.metric("🔥 Active/Interested", interested)
-    m4.metric("🗑️ Junk/Bad", junk)
+    m2.metric("🎉 Sold", sold)
+    m3.metric("🔥 Interested", interested)
+    m4.metric("🗑️ Junk", junk)
     
     st.divider()
-
-    # 2. QUALITY ANALYSIS (Pie Chart Logic)
     c1, c2 = st.columns(2)
-    
     with c1:
-        st.subheader("📢 Source Quality (Kahan se sale aayi?)")
-        # Group by Source and Count
-        if 'Source' in df.columns:
-            source_counts = df['Source'].value_counts()
-            st.bar_chart(source_counts)
-        else:
-            st.write("Source column missing.")
-
+        st.subheader("📢 Source Analysis")
+        if 'Source' in df.columns: st.bar_chart(df['Source'].value_counts())
     with c2:
-        st.subheader("🕵️ Lead Quality Check")
-        # Calculate Junk %
+        st.subheader("🕵️ Quality Check")
         junk_rate = round((junk / total) * 100) if total > 0 else 0
-        st.write(f"**Bad Lead Percentage:** {junk_rate}%")
+        st.write(f"**Bad Lead %:** {junk_rate}%")
         st.progress(junk_rate / 100)
-        
-        if junk_rate > 40:
-            st.error("⚠️ ALERT: 40% se zyada leads kharab hain. Apne Ads ya Agent source check karein.")
-        elif junk_rate < 20:
-            st.success("✅ Good Job! Lead Quality achi hai.")
-        else:
-            st.warning("⚠️ Average Quality. Thoda improvement chahiye.")
+        if junk_rate > 40: st.error("⚠️ Ads check karein. Junk leads zyada hain.")
+        else: st.success("✅ Quality control acha hai.")
 
-    # 3. ACTIONABLE INSIGHTS (Text Logic)
-    st.subheader("💡 TeraTip AI Insights (Kya Karna Chahiye?)")
-    
-    # Logic for Insights
-    insights = []
-    
-    # Check Meta Ads Performance
-    meta_leads = df[df['Source'] == "Meta Ads"]
-    if not meta_leads.empty:
-        meta_junk = len(meta_leads[meta_leads['Status'].str.contains("Faltu|Spam", na=False)])
-        if (meta_junk / len(meta_leads)) > 0.5:
-            insights.append("❌ **Meta Ads Issue:** Facebook ads se kaafi kachra (junk) aa raha hai. Targeting change karein.")
-        else:
-            insights.append("✅ **Meta Ads:** Facebook leads ki quality theek hai.")
-
-    # Check Follow-ups
-    fresh_leads = len(df[df['Status'] == "Naya Lead"])
-    if fresh_leads > 10:
-        insights.append(f"⚠️ **Attention:** {fresh_leads} Naye Leads abhi tak call nahi kiye gaye! Turant call lagayein.")
-    
-    # Check Closing
-    if interested > 10 and sold == 0:
-        insights.append("📉 **Closing Problem:** Kaafi log interested hain par 'Sold' nahi ho rahe. Follow-up strong karein ya discount offer karein.")
-
-    if not insights:
-        st.info("Abhi aur data chahiye insights ke liye.")
-    else:
-        for i in insights:
-            st.write(i)
-
-# --- VIEW 3: ADMIN PANEL ---
+# --- VIEW 3: ADMIN ---
 def show_admin_panel(users_df, users_sheet):
     st.header("⚙️ Admin Panel")
     show_feedback()
@@ -343,7 +316,6 @@ def show_admin_panel(users_df, users_sheet):
     with ac2:
         st.subheader("Team List")
         st.dataframe(users_df[['Name', 'Username', 'Role']], use_container_width=True, hide_index=True)
-        
         options = [u for u in users_df['Username'].unique() if u != st.session_state['username']]
         if options:
             del_target = st.selectbox("Delete User", options)
@@ -353,9 +325,9 @@ def show_admin_panel(users_df, users_sheet):
                 set_feedback(f"🗑️ Deleted {del_target}")
                 st.rerun()
 
-# --- MAIN PAGE LOGIC ---
+# --- MAIN ---
 if st.session_state['role'] == "Manager":
-    tab1, tab2, tab3 = st.tabs(["🏠 Leads Dashboard", "📊 Business Insights", "⚙️ Admin Panel"])
+    tab1, tab2, tab3 = st.tabs(["🏠 Dashboard", "📊 Insights", "⚙️ Admin"])
     with tab1: show_crm_dashboard(users_df)
     with tab2: show_analytics_dashboard()
     with tab3: show_admin_panel(users_df, users_sheet)
