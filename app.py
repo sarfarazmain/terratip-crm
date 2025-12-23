@@ -9,8 +9,7 @@ import time
 # --- CONFIGURATION ---
 st.set_page_config(page_title="TerraTip CRM", layout="wide", page_icon="🏡")
 
-# --- HIDE BRANDING & CUSTOM MOBILE CSS ---
-# We are adding custom CSS to make buttons big and cards distinct
+# --- HIDE BRANDING & CUSTOM CSS ---
 custom_css = """
     <style>
         header {visibility: hidden;}
@@ -20,7 +19,7 @@ custom_css = """
         [data-testid="stElementToolbar"] {display: none;}
         [data-testid="stDecoration"] {display: none;}
         
-        /* MOBILE CARD STYLING */
+        /* CARD STYLING */
         [data-testid="stExpander"] {
             background-color: #1E1E1E;
             border: 1px solid #444;
@@ -28,7 +27,7 @@ custom_css = """
             margin-bottom: 10px;
         }
         
-        /* BIG BUTTONS FOR MOBILE */
+        /* BIG BUTTONS */
         .big-btn {
             display: block;
             width: 100%;
@@ -153,11 +152,8 @@ if st.sidebar.button("Logout"):
     st.session_state['logged_in'] = False; st.query_params.clear(); st.rerun()
 
 # --- BIG BUTTON HELPER ---
-def big_call_btn(num):
-    return f"""<a href="tel:{num}" class="big-btn call-btn">📞 CALL NOW</a>"""
-
-def big_wa_btn(num, name):
-    return f"""<a href="https://wa.me/91{num}?text=Namaste {name}" class="big-btn wa-btn" target="_blank">💬 WHATSAPP</a>"""
+def big_call_btn(num): return f"""<a href="tel:{num}" class="big-btn call-btn">📞 CALL NOW</a>"""
+def big_wa_btn(num, name): return f"""<a href="https://wa.me/91{num}?text=Namaste {name}" class="big-btn wa-btn" target="_blank">💬 WHATSAPP</a>"""
 
 @st.fragment(run_every=10)
 def show_live_leads_list(users_df):
@@ -207,6 +203,17 @@ def show_live_leads_list(users_df):
     status_opts = ["Naya Lead", "Call Uthaya Nahi / Busy", "Baat Hui - Interested", "Site Visit Scheduled", "Visit Done - Soch Raha Hai", "Faltu / Agent / Spam", "Not Interested (Mehenga Hai)", "Sold (Plot Bik Gaya)"]
     all_telecallers = users_df['Username'].tolist()
 
+    # --- PIPELINE ACTION LOGIC (RESTORED) ---
+    def get_pipeline_action(status):
+        if "Naya" in status: return ("⚡ ACTION: Abhi Call Karein", "blue")
+        if "Busy" in status: return ("⏰ ACTION: 4 Ghante baad try karein", "orange")
+        if "Interested" in status: return ("💬 ACTION: WhatsApp Brochure bhejein", "green")
+        if "Scheduled" in status: return ("📍 ACTION: Visit Confirm Karein", "green")
+        if "Visit Done" in status: return ("🤝 ACTION: Closing ke liye push karein", "blue")
+        if "Faltu" in status: return ("🗑️ ACTION: Ignore", "red")
+        if "Sold" in status: return ("🎉 ACTION: Party!", "green")
+        return ("❓ ACTION: Update Status", "grey")
+
     for i, row in df.iterrows():
         name = row.get('Client Name', 'Unknown')
         status = row.get('Status', 'Naya Lead')
@@ -220,14 +227,25 @@ def show_live_leads_list(users_df):
         elif "Naya" in status: icon = "⚡"
         
         alert = "🔔 CALL DUE | " if row.get('Priority') == 1 else ""
+        
+        # Get Action Text
+        action_text, action_color = get_pipeline_action(status)
 
         with st.expander(f"{icon} {alert}{name}"):
-            # --- ROW 1: BIG BUTTONS (Thumb Friendly) ---
+            
+            # --- ACTION BOX (RESTORED) ---
+            if action_color == "blue": st.info(action_text)
+            elif action_color == "green": st.success(action_text)
+            elif action_color == "orange": st.warning(action_text)
+            elif action_color == "red": st.error(action_text)
+            else: st.info(action_text)
+            
+            # --- ROW 1: BIG BUTTONS ---
             b1, b2 = st.columns(2)
             with b1: st.markdown(big_call_btn(phone), unsafe_allow_html=True)
             with b2: st.markdown(big_wa_btn(phone, name), unsafe_allow_html=True)
             
-            st.write("") # Spacer
+            st.write("") 
 
             # --- ROW 2: DETAILS ---
             st.markdown(f"**📞 {phone}** | 📌 {row.get('Source', '-')}")
