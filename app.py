@@ -107,7 +107,6 @@ except Exception as e:
 # --- 3. SESSION & LOGIN ---
 if 'logged_in' not in st.session_state: st.session_state['logged_in'] = False
 
-# Auto-Login via URL
 if not st.session_state['logged_in']:
     qp = st.query_params
     if "u" in qp and "k" in qp:
@@ -125,7 +124,6 @@ if not st.session_state['logged_in']:
             u = st.text_input("Username")
             p = st.text_input("Password", type="password")
             if st.form_submit_button("Login Karein"):
-                # Reload users to check fresh data
                 users_df = pd.DataFrame(users_sheet.get_all_records())
                 info = check_credentials(u, p, users_df)
                 if info is not None:
@@ -136,7 +134,7 @@ if not st.session_state['logged_in']:
                 else: st.error("❌ Galat login")
     st.stop()
 
-# --- 4. DASHBOARD LOGIC ---
+# --- 4. CRM DASHBOARD ---
 st.sidebar.title("TerraTip CRM 🏡")
 st.sidebar.write(f"👤 **{st.session_state['name']}**")
 if st.sidebar.button("Logout"):
@@ -146,17 +144,13 @@ if st.sidebar.button("Logout"):
 
 def phone_btn(num): return f"""<a href="tel:{num}" style="display:inline-block;background-color:#28a745;color:white;padding:5px 12px;border-radius:4px;text-decoration:none;">📞 Call</a>"""
 
-# --- LIVE FEED FRAGMENT (AUTO REFRESH) ---
-# This part refreshes every 10 seconds automatically!
 @st.fragment(run_every=10)
-def show_live_leads_list():
-    # Fetch Fresh Data
+def show_live_leads_list(users_df):
     try:
         data = leads_sheet.get_all_records()
         df = pd.DataFrame(data)
-    except: return # Fail silently on network blip
+    except: return
     
-    # Filter
     if st.session_state['role'] == "Telecaller":
         c_match = [c for c in df.columns if "Assigned" in c]
         if c_match:
@@ -164,38 +158,35 @@ def show_live_leads_list():
                     (df[c_match[0]] == st.session_state['name']) |
                     (df[c_match[0]] == "TC1")]
 
-    if not df.empty and 'Client Name' in df.columns:
-        df = df[df['Client Name'] != ""]
-
+    if not df.empty and 'Client Name' in df.columns: df = df[df['Client Name'] != ""]
     if df.empty:
         st.info("📭 Abhi koi leads nahi hain.")
         return
 
     st.caption(f"⚡ Live Updates On (Auto-refresh every 10s)")
-    
     status_opts = ["Naya Lead", "Call Uthaya Nahi / Busy", "Baat Hui - Interested", "Site Visit Scheduled", "Visit Done - Soch Raha Hai", "Faltu / Agent / Spam", "Not Interested (Mehenga Hai)", "Sold (Plot Bik Gaya)"]
+    all_telecallers = users_df['Username'].tolist()
 
     for i, row in df.iterrows():
         name = row.get('Client Name', 'Unknown')
         status = row.get('Status', 'Naya Lead')
         phone = str(row.get('Phone', '')).replace(',', '').replace('.', '')
+        assigned_to = row.get('Assigned', '-')
         
         icon = "⚪"
         if "Sold" in status: icon = "🟢"
         elif "Faltu" in status or "Not" in status: icon = "🔴"
         elif "Visit" in status: icon = "🚕"
         elif "Naya" in status: icon = "⚡"
-        elif "Interested" in status: icon = "🔹"
         
         with st.expander(f"{icon} {name} | {status}"):
             instr = "❓ Update Status"
             if "Naya" in status: instr = "⚡ ACTION: Abhi call karein."
             elif "Busy" in status: instr = "⏰ ACTION: 4 ghante baad try karein."
             elif "Interested" in status: instr = "💬 ACTION: WhatsApp par brochure bhejein."
-            elif "Visit Scheduled" in status: instr = "📍 ACTION: Visit confirm karein."
-            elif "Visit Done" in status: instr = "🤝 ACTION: Closing ke liye push karein."
-            elif "Faltu" in status: instr = "🗑️ ACTION: Ignore karein."
+            elif "Visit" in status: instr = "📍 ACTION: Visit confirm karein."
             elif "Sold" in status: instr = "🎉 ACTION: Party!"
+            elif "Faltu" in status: instr = "🗑️ ACTION: Ignore."
             
             if "🗑️" in instr or "❌" in instr: st.error(instr)
             elif "🎉" in instr: st.success(instr)
@@ -205,30 +196,44 @@ def show_live_leads_list():
             with c1:
                 st.write(f"📞 **{phone}**")
                 st.write(f"📌 {row.get('Source', '-')}")
-                if row.get('Agent Name'): st.write(f"👤 {row.get('Agent Name')}")
-                st.caption(f"Assigned: {row.get('Assigned', '-')}")
+                st.caption(f"Assigned: {assigned_to}")
             with c2: st.markdown(phone_btn(phone), unsafe_allow_html=True)
             with c3: st.link_button("💬 WhatsApp", f"https://wa.me/91{phone}")
             
-            # Form inside fragment
             with st.form(f"u_{i}"):
-                ns = st.selectbox("Status", status_opts, key=f"s_{i}")
-                note = st.text_input("Note", key=f"n_{i}")
+                c_up_1, c_up_2 = st.columns(2)
+                with c_up_1: ns = st.selectbox("Status", status_opts, key=f"s_{i}", index=status_opts.index(status) if status in status_opts else 0)
+                with c_up_2: note = st.text_input("Note", key=f"n_{i}")
+                
+                new_assign = None
+                if st.session_state['role'] == "Manager":
+                    try: curr_idx = all_telecallers.index(assigned_to)
+                    except: curr_idx = 0
+                    new_assign = st.selectbox("Re-Assign To:", all_telecallers, index=curr_idx, key=f"assign_{i}")
+
                 if st.form_submit_button("💾 Update"):
                     try:
                         h = leads_sheet.row_values(1)
-                        s_idx = h.index("Status") + 1 if "Status" in h else 8
-                        n_idx = h.index("Notes") + 1 if "Notes" in h else 12
+                        try: s_idx = h.index("Status") + 1
+                        except: s_idx = 8
+                        try: n_idx = h.index("Notes") + 1
+                        except: n_idx = 12
+                        try: a_idx = h.index("Assigned") + 1
+                        except: a_idx = 7
+                        try: t_idx = h.index("Last Call") + 1
+                        except: t_idx = 10
                         
                         succ, msg = robust_update(leads_sheet, phone, s_idx, ns)
                         if succ:
                             if note: robust_update(leads_sheet, phone, n_idx, note)
-                            set_feedback(f"✅ {name} updated!")
+                            robust_update(leads_sheet, phone, t_idx, datetime.now().strftime("%Y-%m-%d %H:%M"))
+                            if new_assign and new_assign != assigned_to:
+                                robust_update(leads_sheet, phone, a_idx, new_assign)
+                            set_feedback(f"✅ Updated {name}!")
                             st.rerun()
                         else: st.error(msg)
                     except Exception as e: st.error(f"Err: {e}")
 
-# --- STATIC ADD FORM (NO REFRESH WHILE TYPING) ---
 def show_add_lead_form(users_df):
     with st.expander("➕ Naya Lead Jodein", expanded=False):
         c1, c2 = st.columns(2)
@@ -247,34 +252,91 @@ def show_add_lead_form(users_df):
             if not name or not phone: st.error("⚠️ Name/Phone zaroori hai")
             else:
                 ts = datetime.now().strftime("%Y-%m-%d %H:%M")
-                leads_sheet.append_row(["L-New", ts, name, phone, src, ag, assign, "Naya Lead"])
+                leads_sheet.append_row(["L-New", ts, name, phone, src, ag, assign, "Naya Lead", "", ts])
                 set_feedback(f"✅ Lead '{name}' Saved!")
                 st.rerun()
 
-# --- MAIN PAGE ---
-def show_dashboard(users_df):
-    show_feedback()
-    show_add_lead_form(users_df) # Static Part
-    st.divider()
-    show_live_leads_list() # Live Part (Auto Refresh)
+# --- MASTER INSIGHTS PAGE (The Big Upgrade) ---
+def show_master_insights():
+    st.header("📊 Master Analytics & Team Status")
+    
+    try:
+        df = pd.DataFrame(leads_sheet.get_all_records())
+    except:
+        st.error("No data available.")
+        return
 
-def show_analytics():
-    st.header("📊 Insights")
-    df = pd.DataFrame(leads_sheet.get_all_records())
-    if df.empty: return
+    if df.empty:
+        st.info("No leads found.")
+        return
     
-    tot = len(df); sold = len(df[df['Status'].str.contains("Sold", na=False)])
+    # --- PART 1: BUSINESS PERFORMANCE (Ad & Quality) ---
+    st.subheader("1️⃣ Business Performance (Ads & Quality)")
+    
+    total = len(df)
+    sold = len(df[df['Status'].str.contains("Sold", na=False)])
     junk = len(df[df['Status'].str.contains("Faltu|Not", na=False)])
-    m1, m2, m3 = st.columns(3)
-    m1.metric("Total", tot); m2.metric("Sold", sold); m3.metric("Junk", junk)
+    interested = len(df[df['Status'].str.contains("Interested|Visit", na=False)])
     
-    st.divider()
+    m1, m2, m3, m4 = st.columns(4)
+    m1.metric("Total Leads", total)
+    m2.metric("🎉 Sold", sold)
+    m3.metric("🔥 Interested", interested)
+    m4.metric("🗑️ Junk", junk)
+    
     c1, c2 = st.columns(2)
     with c1: 
+        st.caption("Leads by Source (Kahan se aa rahe hain?)")
         if 'Source' in df.columns: st.bar_chart(df['Source'].value_counts())
     with c2:
-        jr = round((junk/tot)*100) if tot>0 else 0
-        st.write(f"**Junk %:** {jr}%"); st.progress(jr/100)
+        st.caption("Lead Quality Meter")
+        jr = round((junk/total)*100) if total>0 else 0
+        st.write(f"**Junk %:** {jr}%")
+        st.progress(jr/100)
+        if jr > 40: st.error("⚠️ Warning: Ad Quality is Poor (Too much junk). Check Meta Ads.")
+        elif jr < 20: st.success("✅ Excellent: Ad Quality is Good.")
+        else: st.warning("⚠️ Average: Ad Quality needs improvement.")
+
+    st.divider()
+
+    # --- PART 2: TEAM PERFORMANCE (Telecallers) ---
+    st.subheader("2️⃣ Team Pulse (Telecaller Activity)")
+    
+    if 'Assigned' in df.columns:
+        telecallers = df['Assigned'].unique()
+        summary_data = []
+
+        for tc in telecallers:
+            tc_df = df[df['Assigned'] == tc]
+            pending = len(tc_df[tc_df['Status'] == 'Naya Lead'])
+            working = len(tc_df[tc_df['Status'].str.contains("Busy|Interested|Visit", na=False)])
+            sold_tc = len(tc_df[tc_df['Status'].str.contains("Sold", na=False)])
+            
+            last_active = "-"
+            if 'Last Call' in tc_df.columns:
+                try: 
+                    # Find latest date string
+                    times = [x for x in tc_df['Last Call'] if x]
+                    if times: last_active = max(times)
+                except: pass
+
+            summary_data.append({
+                "User": tc,
+                "Total": len(tc_df),
+                "⚠️ Pending": pending,
+                "🔥 Working": working,
+                "🎉 Sold": sold_tc,
+                "🕒 Last Active": last_active
+            })
+        
+        st.dataframe(pd.DataFrame(summary_data), use_container_width=True, hide_index=True)
+    
+    # Unattended Warning
+    naya_df = df[df['Status'] == "Naya Lead"]
+    if not naya_df.empty:
+        st.warning(f"⚠️ There are {len(naya_df)} Unattended Leads! (Status: 'Naya Lead')")
+    else:
+        st.success("✅ All leads are being attended.")
 
 def show_admin(users_df):
     st.header("⚙️ Admin")
@@ -298,10 +360,16 @@ def show_admin(users_df):
                 users_sheet.delete_rows(users_sheet.find(dt).row)
                 set_feedback(f"Deleted {dt}"); st.rerun()
 
+def show_dashboard(users_df):
+    show_feedback()
+    show_add_lead_form(users_df)
+    st.divider()
+    show_live_leads_list(users_df)
+
 if st.session_state['role'] == "Manager":
     t1, t2, t3 = st.tabs(["🏠 CRM", "📊 Insights", "⚙️ Admin"])
     with t1: show_dashboard(users_df)
-    with t2: show_analytics()
+    with t2: show_master_insights()
     with t3: show_admin(users_df)
 else:
     show_dashboard(users_df)
