@@ -7,6 +7,7 @@ import hashlib
 import time
 import re
 import random
+import itertools
 
 # --- CONFIGURATION ---
 st.set_page_config(page_title="TerraTip CRM", layout="wide", page_icon="🏡")
@@ -53,9 +54,18 @@ def show_feedback():
     if 'feedback_msg' in st.session_state and st.session_state['feedback_msg']:
         msg = st.session_state['feedback_msg']
         typ = st.session_state.get('feedback_type', 'success')
-        if typ == "success": st.success(msg, icon="✅")
-        elif typ == "error": st.error(msg, icon="❌")
-        elif typ == "warning": st.warning(msg, icon="⚠️")
+        
+        # Show Toast (Pop-up)
+        if typ == "success": 
+            st.toast(msg, icon="✅")
+            st.success(msg, icon="✅")
+        elif typ == "error": 
+            st.toast(msg, icon="❌")
+            st.error(msg, icon="❌")
+        elif typ == "warning": 
+            st.toast(msg, icon="⚠️")
+            st.warning(msg, icon="⚠️")
+            
         st.session_state['feedback_msg'] = None
 
 # --- DATABASE ---
@@ -105,9 +115,6 @@ def robust_update(sheet, phone_number, col_index, value):
 
 # --- ID GENERATOR ---
 def generate_lead_id(prefix="L"):
-    # Generates a unique ID based on Time + Random 2 digits
-    # Format: L-25121045 (Year-Month-Day-Time) or just Epoch for speed
-    # We use Epoch (seconds) last 6 digits + 2 random digits to keep it short but unique
     ts = str(int(time.time()))[-6:] 
     rand = str(random.randint(10, 99))
     return f"{prefix}-{ts}{rand}"
@@ -308,7 +315,7 @@ def show_add_lead_form(users_df):
                 except: pass
                 
                 ts = datetime.now().strftime("%Y-%m-%d %H:%M")
-                new_id = generate_lead_id() # GENERATE ID
+                new_id = generate_lead_id()
                 row_data = [new_id, ts, name, phone, src, ag, assign, "Naya Lead", "", ts, "", "", "", "", ""] 
                 leads_sheet.append_row(row_data)
                 set_feedback(f"✅ Saved {name}")
@@ -342,6 +349,7 @@ def show_master_insights():
 
 def show_admin(users_df):
     st.header("⚙️ Admin")
+    # IMPORTANT: Show feedback message here after reload
     show_feedback()
 
     c1, c2 = st.columns([1,2])
@@ -357,15 +365,23 @@ def show_admin(users_df):
                     set_feedback(f"✅ Created {u}"); st.rerun()
         
         st.divider()
-        st.subheader("📥 Bulk Upload (Auto-Fix)")
-        st.caption("Supports: FB Export. Auto-Sets Source = 'Meta Ads'.")
+        st.subheader("📥 Bulk Upload (Auto-Distribute)")
+        st.caption("Upload CSV. Leads will be distributed among selected agents.")
+        
+        # --- SELECT AGENTS FOR DISTRIBUTION ---
+        telecaller_list = users_df[users_df['Role'].isin(['Telecaller', 'Sales Specialist'])]['Username'].tolist()
+        if not telecaller_list: telecaller_list = [st.session_state['username']]
+        
+        selected_agents = st.multiselect("Assign Leads To:", telecaller_list, default=telecaller_list)
         
         uploaded_file = st.file_uploader("Choose CSV File", type=['csv'])
         
-        if uploaded_file is not None:
-            if st.button("Start Upload"):
+        if uploaded_file is not None and st.button("Start Upload"):
+            if not selected_agents:
+                st.error("⚠️ Please select at least one agent to assign leads to.")
+            else:
                 try:
-                    # Robust Encoding Read
+                    # Robust CSV Read
                     try: df_up = pd.read_csv(uploaded_file, encoding='utf-8')
                     except: 
                         try: uploaded_file.seek(0); df_up = pd.read_csv(uploaded_file, encoding='utf-16', sep='\t')
@@ -373,7 +389,7 @@ def show_admin(users_df):
                     
                     cols = [c.lower() for c in df_up.columns]
                     
-                    # Smart Column Detection
+                    # Column Hunt
                     name_idx = -1
                     for i, c in enumerate(cols):
                         if "full_name" in c or "fullname" in c: name_idx = i; break
@@ -391,23 +407,25 @@ def show_admin(users_df):
                     rows_to_add = []
                     ts = datetime.now().strftime("%Y-%m-%d %H:%M")
                     
+                    # --- ROUND ROBIN CYCLE (SELECTED AGENTS) ---
+                    agent_cycle = itertools.cycle(selected_agents)
+                    
                     for idx, row in df_up.iterrows():
                         p_raw = str(row[phone_col])
                         p_clean = re.sub(r'\D', '', p_raw)
                         
                         if len(p_clean) >= 10 and p_clean not in all_phones:
-                            # AUTO GENERATE ID HERE
                             new_id = generate_lead_id()
+                            assigned_person = next(agent_cycle) # Distribute!
                             
-                            # FORCE SOURCE = "Meta Ads"
-                            new_row = [new_id, ts, row[name_col], p_clean, "Meta Ads", "", st.session_state['username'], "Naya Lead", "", ts, "", "", "", "", ""]
+                            new_row = [new_id, ts, row[name_col], p_clean, "Meta Ads", "", assigned_person, "Naya Lead", "", ts, "", "", "", "", ""]
                             rows_to_add.append(new_row)
                             all_phones.add(p_clean)
-                            time.sleep(0.01) # Tiny sleep to ensure random ID seed changes if strict time based
+                            time.sleep(0.01)
                     
                     if rows_to_add:
                         leads_sheet.append_rows(rows_to_add)
-                        set_feedback(f"✅ SUCCESS: Added {len(rows_to_add)} leads from Meta Ads!")
+                        set_feedback(f"✅ SUCCESS: Added {len(rows_to_add)} leads! Distributed to {len(selected_agents)} agents.")
                     else:
                         set_feedback("⚠️ No new leads added (duplicates).", "warning")
                     
