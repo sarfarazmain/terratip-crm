@@ -67,12 +67,8 @@ def check_credentials(username, password, users_df):
             return user_row.iloc[0]
     return None
 
-# --- ROBUST UPDATE FUNCTION (THE FIX) ---
 def robust_update(sheet, phone_number, col_index, value):
-    """Finds the row by Phone Number before updating. Prevents row mismatch errors."""
     try:
-        # Find cell with the specific phone number
-        # We assume Phone is in the first 5 columns to speed up search, or search whole sheet
         cell = sheet.find(phone_number)
         if cell:
             sheet.update_cell(cell.row, col_index, value)
@@ -80,7 +76,7 @@ def robust_update(sheet, phone_number, col_index, value):
         else:
             return False, "Lead not found (Deleted?)"
     except gspread.exceptions.APIError:
-        time.sleep(1) # Wait and retry once if API is busy
+        time.sleep(1)
         try:
             cell = sheet.find(phone_number)
             if cell:
@@ -107,10 +103,29 @@ except Exception as e:
     st.error(f"Connection Error: {e}")
     st.stop()
 
-# --- 3. LOGIN LOGIC ---
+# --- 3. AUTO-LOGIN & SESSION LOGIC ---
 if 'logged_in' not in st.session_state:
     st.session_state['logged_in'] = False
 
+# Auto-Login Check (URL Params)
+if not st.session_state['logged_in']:
+    query_params = st.query_params
+    if "u" in query_params and "k" in query_params:
+        q_user = query_params["u"]
+        q_hash = query_params["k"]
+        
+        # Verify against DB
+        user_row = users_df[users_df['Username'] == q_user]
+        if not user_row.empty:
+            stored_pass = user_row.iloc[0]['Password']
+            if stored_pass == q_hash:
+                st.session_state['logged_in'] = True
+                st.session_state['username'] = user_row.iloc[0]['Username']
+                st.session_state['role'] = user_row.iloc[0]['Role']
+                st.session_state['name'] = user_row.iloc[0]['Name']
+                st.rerun()
+
+# Login Page
 if not st.session_state['logged_in']:
     col1, col2, col3 = st.columns([1,2,1])
     with col2:
@@ -121,14 +136,21 @@ if not st.session_state['logged_in']:
             submit = st.form_submit_button("Login Karein")
             
             if submit:
+                # Reload user data to capture any new password changes
                 users_data = users_sheet.get_all_records()
                 users_df = pd.DataFrame(users_data)
+                
                 user_info = check_credentials(user_input, pass_input, users_df)
                 if user_info is not None:
                     st.session_state['logged_in'] = True
                     st.session_state['username'] = user_info['Username']
                     st.session_state['role'] = user_info['Role']
                     st.session_state['name'] = user_info['Name']
+                    
+                    # SET URL PARAMS FOR PERSISTENCE
+                    st.query_params["u"] = user_info['Username']
+                    st.query_params["k"] = user_info['Password']
+                    
                     st.rerun()
                 else:
                     st.error("❌ Galat Username ya Password.")
@@ -138,8 +160,14 @@ if not st.session_state['logged_in']:
 st.sidebar.title("TerraTip CRM 🏡")
 st.sidebar.write(f"👤 **{st.session_state['name']}**")
 st.sidebar.caption(f"Role: {st.session_state['role']}")
+
+# REFRESH DATA BUTTON (Best practice instead of F5)
+if st.sidebar.button("🔄 Refresh Data"):
+    st.rerun()
+
 if st.sidebar.button("Logout"):
     st.session_state['logged_in'] = False
+    st.query_params.clear() # Clear URL so they can't auto-login
     st.rerun()
 
 def phone_call_btn(phone_number):
@@ -149,7 +177,7 @@ def phone_call_btn(phone_number):
 def show_crm_dashboard(users_df):
     show_feedback()
     
-    # Refresh data
+    # Reload Leads Data
     leads_data = leads_sheet.get_all_records()
     leads_df = pd.DataFrame(leads_data)
 
@@ -242,15 +270,13 @@ def show_crm_dashboard(users_df):
                 note = st.text_input("Note", key=f"n_{i}")
                 
                 if st.form_submit_button("💾 Update"):
-                    # --- NEW ROBUST UPDATE LOGIC ---
                     try:
                         headers = leads_sheet.row_values(1)
                         try: s_idx = headers.index("Status") + 1; n_idx = headers.index("Notes") + 1
                         except: s_idx=8; n_idx=12
                         
-                        # Use Phone Number to find exact row (Prevention of Race Condition)
+                        # Robust Update by Phone
                         success, msg = robust_update(leads_sheet, phone, s_idx, ns)
-                        
                         if success:
                             if note: robust_update(leads_sheet, phone, n_idx, note)
                             set_feedback(f"✅ {name} updated!")
