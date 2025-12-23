@@ -5,6 +5,7 @@ from google.oauth2.service_account import Credentials
 from datetime import datetime, date, timedelta
 import hashlib
 import time
+import re
 
 # --- CONFIGURATION ---
 st.set_page_config(page_title="TerraTip CRM", layout="wide", page_icon="🏡")
@@ -344,42 +345,67 @@ def show_admin(users_df):
                     set_feedback(f"✅ Created {u}"); st.rerun()
         
         st.divider()
-        st.subheader("📥 Bulk Upload (Speed Mode)")
-        st.caption("Upload CSV. Columns: Name, Phone. (No Header needed, will guess).")
-        uploaded_file = st.file_uploader("Choose CSV", type=['csv'])
+        st.subheader("📥 Bulk Upload (Auto-Fix Encoding)")
+        st.caption("Supports: UTF-8, UTF-16, ISO-8859-1. CSV Only.")
+        
+        # STRICT CSV FILTER
+        uploaded_file = st.file_uploader("Choose CSV File", type=['csv'])
+        
         if uploaded_file is not None:
-            if st.button("Start Fast Upload"):
+            if st.button("Start Upload"):
+                # --- ROBUST DECODING LOGIC ---
                 try:
-                    df_up = pd.read_csv(uploaded_file)
+                    df_up = pd.read_csv(uploaded_file, encoding='utf-8')
+                except UnicodeDecodeError:
+                    uploaded_file.seek(0)
+                    try:
+                        df_up = pd.read_csv(uploaded_file, encoding='utf-16')
+                    except UnicodeDecodeError:
+                        uploaded_file.seek(0)
+                        try:
+                            df_up = pd.read_csv(uploaded_file, encoding='ISO-8859-1')
+                        except Exception as e:
+                            st.error(f"❌ File encoding not supported. Try saving as standard CSV (UTF-8). Error: {e}")
+                            st.stop()
+                
+                try:
                     # Smart Column Detection
-                    name_col = next((c for c in df_up.columns if "name" in c.lower()), df_up.columns[0])
-                    phone_col = next((c for c in df_up.columns if "phone" in c.lower() or "mobile" in c.lower()), df_up.columns[1])
+                    cols = [c.lower() for c in df_up.columns]
+                    # Find 'name' or use 1st column
+                    name_idx = next((i for i, c in enumerate(cols) if "name" in c), 0)
+                    # Find 'phone' or 'mobile' or use 2nd column
+                    phone_idx = next((i for i, c in enumerate(cols) if "phone" in c or "mobile" in c), 1)
                     
-                    # Fetch existing phones ONCE (Fast)
+                    name_col = df_up.columns[name_idx]
+                    phone_col = df_up.columns[phone_idx]
+                    
+                    # Fetch existing phones
                     all_phones = set(leads_sheet.col_values(4))
                     
                     rows_to_add = []
                     ts = datetime.now().strftime("%Y-%m-%d %H:%M")
                     
                     for idx, row in df_up.iterrows():
-                        p_raw = str(row[phone_col]).replace(".0","").strip()
-                        if p_raw not in all_phones:
-                            # Batch prepare rows
+                        # --- PHONE CLEANING (Strip all non-digits) ---
+                        p_raw = str(row[phone_col])
+                        p_clean = re.sub(r'\D', '', p_raw) # Keep only numbers
+                        
+                        # Only add if valid length (e.g. at least 10 digits) and not duplicate
+                        if len(p_clean) >= 10 and p_clean not in all_phones:
                             # [ID, Time, Name, Phone, Source, Agent, Assigned, Status, ..., ..., LastCall, ..., ..., ..., ..., FollowUp]
-                            # Make sure this length matches your headers or just is long enough
-                            new_row = ["L-Bulk", ts, row[name_col], p_raw, "Bulk Upload", "", st.session_state['username'], "Naya Lead", "", ts, "", "", "", "", ""]
+                            new_row = ["L-Bulk", ts, row[name_col], p_clean, "Bulk Upload", "", st.session_state['username'], "Naya Lead", "", ts, "", "", "", "", ""]
                             rows_to_add.append(new_row)
-                            all_phones.add(p_raw) # Prevent duplicates inside the CSV itself
+                            all_phones.add(p_clean)
                     
                     if rows_to_add:
-                        leads_sheet.append_rows(rows_to_add) # ONE API CALL
-                        set_feedback(f"✅ FAST UPLOAD: Added {len(rows_to_add)} leads instantly!")
+                        leads_sheet.append_rows(rows_to_add)
+                        set_feedback(f"✅ SUCCESS: Added {len(rows_to_add)} new leads! (Duplicates skipped)")
                     else:
-                        st.warning("No new leads found (all duplicates).")
+                        st.warning("⚠️ No new leads added (All were duplicates or invalid).")
                     
                     time.sleep(2)
                     st.rerun()
-                except Exception as e: st.error(f"Error: {e}")
+                except Exception as e: st.error(f"Processing Error: {e}")
 
     with c2:
         st.subheader("Team List")
