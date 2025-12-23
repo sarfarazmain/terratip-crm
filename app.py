@@ -111,13 +111,21 @@ if st.sidebar.button("Logout"):
 
 st.sidebar.divider()
 
-# --- ADMIN PANEL (CREATE, VIEW, DELETE USERS) ---
+# --- ADMIN PANEL (MANAGE USERS) ---
 if st.session_state['role'] == "Manager":
     with st.sidebar.expander("⚙️ Admin Panel (Manage Users)", expanded=False):
         
-        # A. CREATE USER
+        # --- SUCCESS MESSAGE RELAY ---
+        # This checks if a message was saved in memory from the previous run
+        if 'admin_msg' in st.session_state and st.session_state['admin_msg']:
+            st.success(st.session_state['admin_msg'])
+            st.session_state['admin_msg'] = None # Clear it so it doesn't stay forever
+        
+        # A. CREATE USER (With Clear Form Logic)
         st.write("### Create New User")
-        with st.form("new_user"):
+        
+        # 'clear_on_submit=True' wipes the text boxes automatically after clicking
+        with st.form("new_user", clear_on_submit=True):
             new_u = st.text_input("Username")
             new_p = st.text_input("Password", type="password")
             new_n = st.text_input("Full Name")
@@ -129,15 +137,15 @@ if st.session_state['role'] == "Manager":
                         st.error(f"User '{new_u}' already exists!")
                     else:
                         users_sheet.append_row([new_u, hash_pass(new_p), new_r, new_n])
-                        st.success(f"✅ User '{new_u}' Created Successfully!")
-                        st.rerun()
+                        # Save success message to memory
+                        st.session_state['admin_msg'] = f"✅ Created user: {new_u}"
+                        st.rerun() # Refresh to update list and clear form
         
         st.divider()
         
         # B. DELETE USER
         st.write("### Delete User")
         
-        # Filter out current admin so they don't delete themselves
         options = [u for u in users_df['Username'].unique() if u != st.session_state['username']]
         
         if options:
@@ -145,96 +153,9 @@ if st.session_state['role'] == "Manager":
             
             if st.button("❌ DELETE SELECTED USER", type="primary"):
                 try:
-                    # Find the cell with the username
                     cell = users_sheet.find(delete_target)
-                    # Delete that row
                     users_sheet.delete_rows(cell.row)
-                    st.success(f"🗑️ Deleted {delete_target}")
+                    st.session_state['admin_msg'] = f"🗑️ Deleted user: {delete_target}"
                     st.rerun()
                 except Exception as e:
-                    st.error(f"Error deleting: {e}")
-        else:
-            st.info("No other users to delete.")
-            
-        st.divider()
-        
-        # C. VIEW USERS LIST
-        st.write("### Current Users List")
-        # Show table but hide Password column for security
-        display_df = users_df[['Name', 'Username', 'Role']]
-        st.dataframe(display_df, hide_index=True)
-
-# --- MAIN CRM LOGIC ---
-
-# 1. Load Leads
-leads_data = leads_sheet.get_all_records()
-leads_df = pd.DataFrame(leads_data)
-
-# 2. Filter Logic
-if st.session_state['role'] == "Telecaller":
-    col_match = [c for c in leads_df.columns if "Assigned" in c]
-    if col_match:
-        leads_df = leads_df[
-            (leads_df[col_match[0]] == st.session_state['username']) | 
-            (leads_df[col_match[0]] == st.session_state['name']) |
-            (leads_df[col_match[0]] == "TC1")
-        ]
-
-# 3. Add Lead Form
-with st.expander("➕ Add New Lead", expanded=False):
-    with st.form("add_lead"):
-        c1, c2 = st.columns(2)
-        name = c1.text_input("Client Name")
-        phone = c2.text_input("Phone")
-        source = st.selectbox("Source", ["Meta Ads", "Referral", "Cold Call"])
-        if st.form_submit_button("Save"):
-            ts = datetime.now().strftime("%Y-%m-%d %H:%M")
-            new_row = ["L-New", ts, name, phone, source, st.session_state['name'], st.session_state['username'], "Naya"]
-            leads_sheet.append_row(new_row)
-            st.success("Saved!")
-            st.rerun()
-
-# 4. Display Leads
-st.divider()
-
-if not leads_df.empty and 'Client Name' in leads_df.columns:
-    leads_df = leads_df[leads_df['Client Name'] != ""]
-
-if leads_df.empty:
-    st.info("No leads assigned to you.")
-
-for i, row in leads_df.iterrows():
-    name = row.get('Client Name', 'Unknown')
-    status = row.get('Status', 'Naya')
-    phone = str(row.get('Phone', '')).replace(',', '').replace('.', '')
-    
-    icon = "⚪"
-    if status == "Sold": icon = "🟢"
-    if status == "Lost": icon = "🔴"
-    if status == "Site Visit Scheduled": icon = "🚕"
-    
-    with st.expander(f"{icon} {name} | {status}"):
-        c1, c2 = st.columns([2, 1])
-        with c1:
-            st.write(f"📞 **{phone}**")
-            st.write(f"📌 {row.get('Source', '-')}")
-        with c2:
-            st.link_button("WhatsApp", f"https://wa.me/91{phone}?text=Namaste {name}")
-        
-        with st.form(f"u_{i}"):
-            ns = st.selectbox("Status", ["Naya", "Call Done", "Site Visit Scheduled", "Lost", "Sold"], key=f"s_{i}")
-            note = st.text_input("Note", key=f"n_{i}")
-            if st.form_submit_button("Update"):
-                try:
-                    head = leads_sheet.row_values(1)
-                    s_idx = head.index("Status") + 1
-                    try: n_idx = head.index("Notes") + 1
-                    except: n_idx = 12
-                    
-                    real_row = i + 2
-                    leads_sheet.update_cell(real_row, s_idx, ns)
-                    if note: leads_sheet.update_cell(real_row, n_idx, note)
-                    st.success("Updated!")
-                    st.rerun()
-                except:
-                    st.error("Error finding columns.")
+                    st.error(f"
