@@ -5,10 +5,13 @@ from google.oauth2.service_account import Credentials
 
 st.set_page_config(page_title="TerraTip CRM", layout="wide")
 
-# --- STEP 1: CONNECT ---
+# --- STEP 1: CONNECT TO BOT ---
 @st.cache_resource
 def connect():
     scopes = ["https://www.googleapis.com/auth/spreadsheets", "https://www.googleapis.com/auth/drive"]
+    if "gcp_service_account" not in st.secrets:
+        st.error("❌ Critical: Secrets missing.")
+        st.stop()
     creds_dict = dict(st.secrets["gcp_service_account"])
     if "private_key" in creds_dict:
         creds_dict["private_key"] = creds_dict["private_key"].replace("\\n", "\n")
@@ -17,45 +20,49 @@ def connect():
 
 try:
     client = connect()
-    st.success("✅ Step 1: Bot Logged In")
-    
-    # --- STEP 2: OPEN WORKBOOK ---
-    # ID from your screenshot: 1glNrjdnr9sg7nkKh0jcazwZ5_92Rv4ZBeBYFaDZ_khU
-    sheet_id = "1glNrjdnr9sg7nkKh0jcazwZ5_92Rv4ZBeBYFaDZ_khU"
-    
-    try:
-        sh = client.open_by_key(sheet_id)
-        st.success(f"✅ Step 2: Found File '{sh.title}'")
-    except Exception as e:
-        st.error(f"❌ Failed to open file: {e}")
-        st.stop()
+    st.success("✅ Bot Logged In")
 
-    # --- STEP 3: LIST TABS (The Diagnosis) ---
-    st.info("👇 The Bot sees these Tabs inside your file:")
+    # --- STEP 2: AUTO-DISCOVER FILE (No ID needed) ---
+    # We ask the bot to list all files it can see
+    files = client.list_spreadsheet_files()
     
-    worksheet_list = sh.worksheets()
-    found_leads = False
+    if not files:
+        st.error("❌ The Bot sees 0 files.")
+        st.warning("👉 You MUST click 'Share' on your Google Sheet and add this email as Editor:")
+        st.code(st.secrets["gcp_service_account"]["client_email"])
+        st.stop()
     
-    for ws in worksheet_list:
-        # We print the EXACT name (with quotes) to see hidden spaces
-        st.write(f"📄 Found Tab: `'{ws.title}'`")
+    # We automatically pick the first file found
+    target_file = files[0]
+    sheet_id = target_file['id']
+    sheet_name = target_file['name']
+    
+    st.success(f"✅ Auto-Connected to: '{sheet_name}'")
+    
+    # Open that file
+    sh = client.open_by_key(sheet_id)
+
+    # --- STEP 3: FIND THE RIGHT TAB ---
+    # We look for a tab with "lead" in the name, otherwise take the first one
+    found_sheet = None
+    for ws in sh.worksheets():
         if "lead" in ws.title.lower():
-            sheet = ws
-            found_leads = True
+            found_sheet = ws
+            break
     
-    if not found_leads:
-        st.warning("⚠️ logic: Could not find a tab named 'Leads'. Defaulting to first tab.")
-        sheet = sh.get_worksheet(0)
+    if found_sheet:
+        sheet = found_sheet
+        st.info(f"📂 Using Tab: '{sheet.title}'")
     else:
-        st.success(f"✅ Selected Tab: '{sheet.title}'")
+        sheet = sh.get_worksheet(0)
+        st.info(f"📂 Using First Tab: '{sheet.title}'")
 
     # --- STEP 4: LOAD DATA ---
     data = sheet.get_all_records()
     df = pd.DataFrame(data)
-    st.write("---")
 
 except Exception as e:
-    st.error(f"❌ CRASH REPORT: {e}")
+    st.error(f"❌ Error: {e}")
     st.stop()
 
 # --- APP INTERFACE ---
@@ -64,15 +71,20 @@ user = st.sidebar.selectbox("User", ["Manager", "Amit (TC1)", "Rahul (TC2)"])
 
 if "TC" in user:
     code = "TC1" if "Amit" in user else "TC2"
-    # Flexible filter
-    if 'Assigned' in df.columns: df = df[df['Assigned'] == code]
-    elif 'Assigned TC' in df.columns: df = df[df['Assigned TC'] == code]
+    # Filter using whatever column name exists
+    col_match = [c for c in df.columns if "Assigned" in c]
+    if col_match:
+        df = df[df[col_match[0]] == code]
+
+if df.empty:
+    st.warning("No leads found in this sheet.")
 
 for i, row in df.iterrows():
-    name = row.get('Client Name', 'Unknown')
-    phone = str(row.get('Phone', '')).replace(',', '')
+    # Flexible Column Names
+    name = row.get('Client Name', row.get('Name', 'Unknown'))
     status = row.get('Status', 'Naya')
-    
+    phone = str(row.get('Phone', '')).replace(',', '').replace('.', '')
+
     with st.expander(f"{name} ({status})"):
         st.write(f"📞 {phone}")
         st.link_button("Chat", f"https://wa.me/91{phone}")
@@ -80,7 +92,15 @@ for i, row in df.iterrows():
         with st.form(f"f_{i}"):
             new_s = st.selectbox("Status", ["Naya", "Call Done", "Sold"], key=f"s_{i}")
             if st.form_submit_button("Update"):
-                # Use the 'sheet' variable we found in Step 3
-                sheet.update_cell(i + 2, 8, new_s)
+                # Find Status Column Index automatically
+                status_col_index = 8 # Default
+                try:
+                    # Try to find "Status" column number dynamically
+                    headers = sheet.row_values(1)
+                    status_col_index = headers.index("Status") + 1
+                except:
+                    pass
+                
+                sheet.update_cell(i + 2, status_col_index, new_s)
                 st.success("Updated!")
                 st.rerun()
