@@ -14,18 +14,20 @@ def connect_to_google_sheets():
         "https://www.googleapis.com/auth/drive"
     ]
     
+    # 1. Check Secrets
     if "gcp_service_account" not in st.secrets:
         st.error("❌ Critical Error: Secrets not found.")
         st.stop()
     
     try:
         creds_dict = dict(st.secrets["gcp_service_account"])
+        # Fix newlines
         if "private_key" in creds_dict:
             creds_dict["private_key"] = creds_dict["private_key"].replace("\\n", "\n")
         
         creds = Credentials.from_service_account_info(creds_dict, scopes=scopes)
         client = gspread.authorize(creds)
-        return client
+        return client, creds_dict.get("client_email")
         
     except Exception as e:
         st.error(f"❌ Authentication Failed: {e}")
@@ -33,17 +35,22 @@ def connect_to_google_sheets():
 
 # --- MAIN LOGIC ---
 try:
-    client = connect_to_google_sheets()
+    client, bot_email = connect_to_google_sheets()
     
-    # URL from your screenshot
-    sheet_url = "https://docs.google.com/spreadsheets/d/1glNrjdnr9sg7nkKh0jcazwZ5_92Rv4ZBeBYFaDZ_khU/edit"
+    # 👇 THE FIX: USING THE EXACT SHEET ID FROM YOUR SCREENSHOT
+    sheet_id = "1glNrjdnr9sg7nkKh0jcazwZ5_92Rv4ZBeBYFaDZ_khU"
     
     try:
-        sheet = client.open_by_url(sheet_url).sheet1
+        # Open by Key is the safest method
+        sheet = client.open_by_key(sheet_id).sheet1
         data = sheet.get_all_records()
         df = pd.DataFrame(data)
+    except gspread.exceptions.SpreadsheetNotFound:
+        st.error("❌ ERROR: The bot cannot find the sheet.")
+        st.warning(f"👉 Please verify you shared the sheet with: {bot_email}")
+        st.stop()
     except Exception as e:
-        st.error(f"❌ Spreadsheet Error: {e}")
+        st.error(f"❌ Connection Error: {e}")
         st.stop()
 
 except Exception as e:
@@ -55,13 +62,13 @@ st.sidebar.title("TerraTip Login")
 st.sidebar.success("✅ Database Connected") 
 user_user = st.sidebar.selectbox("Select User", ["Manager", "Amit (TC1)", "Rahul (TC2)", "Sales Specialist"])
 
-# --- FILTERING LOGIC (Updated for your Column Names) ---
+# --- FILTERING LOGIC ---
 if user_user == "Manager":
     filtered_df = df
 elif "TC" in user_user:
     tc_code = "TC1" if "Amit" in user_user else "TC2"
     
-    # Your screenshot shows the column is named "Assigned"
+    # Handling your specific column names from screenshot
     if 'Assigned' in df.columns:
          filtered_df = df[df['Assigned'] == tc_code]
     elif 'Assigned TC' in df.columns:
@@ -82,11 +89,10 @@ if filtered_df.empty:
     st.info("No leads found for this view.")
 
 for index, row in filtered_df.iterrows():
-    # Safe Get to avoid errors
     c_name = row.get('Client Name', 'Unknown')
     c_status = row.get('Status', 'Naya')
-    # Convert phone to string to prevent comma issues (e.g. 9,999...)
-    c_phone = str(row.get('Phone', '')).replace(',', '')
+    # Clean phone number
+    c_phone = str(row.get('Phone', '')).replace(',', '').replace('.', '')
     
     with st.expander(f"{c_name} ({c_status})"):
         st.write(f"**Phone:** {c_phone}")
@@ -96,24 +102,20 @@ for index, row in filtered_df.iterrows():
         wa_link = f"https://wa.me/91{c_phone}?text=Namaste {c_name}, TerraTip se baat kar raha hoon."
         st.link_button("💬 Chat on WhatsApp", wa_link)
         
-        # Update Form (Fixed Syntax Error here)
-        form_key_name = f"form_{index}"
-        selectbox_key_name = f"status_{index}"
-        
-        with st.form(key=form_key_name):
+        # Update Form
+        with st.form(key=f"form_{index}"):
             new_status = st.selectbox(
                 "Update Status", 
                 ["Naya", "Call Done", "Site Visit Scheduled", "No Show", "Lost", "Sold"],
-                key=selectbox_key_name
+                key=f"status_{index}"
             )
             
             submit = st.form_submit_button("💾 Save Update")
             
             if submit:
-                # Index + 2 is the standard calculation for GSpread (Header + 1-based index)
                 real_row = index + 2
                 try:
-                    # Updating Column 8 (Status) based on your screenshot
+                    # Update Column 8 (Status)
                     sheet.update_cell(real_row, 8, new_status)
                     st.success(f"Updated {c_name}!")
                     st.rerun()
