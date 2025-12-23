@@ -2,15 +2,27 @@ import streamlit as st
 import pandas as pd
 import gspread
 from google.oauth2.service_account import Credentials
+from datetime import datetime
 
-st.set_page_config(page_title="TerraTip CRM", layout="wide")
+# --- CONFIGURATION ---
+st.set_page_config(page_title="TerraTip CRM", layout="wide", page_icon="🏡")
 
-# --- STEP 1: CONNECT TO BOT ---
+# --- 1. REMOVE TOP BAR & FOOTER (CSS HACK) ---
+hide_decoration_bar_style = '''
+    <style>
+        header {visibility: hidden;}
+        footer {visibility: hidden;}
+        #MainMenu {visibility: hidden;}
+    </style>
+'''
+st.markdown(hide_decoration_bar_style, unsafe_allow_html=True)
+
+# --- 2. CONNECT TO DATABASE ---
 @st.cache_resource
 def connect():
     scopes = ["https://www.googleapis.com/auth/spreadsheets", "https://www.googleapis.com/auth/drive"]
     if "gcp_service_account" not in st.secrets:
-        st.error("❌ Critical: Secrets missing.")
+        st.error("❌ Secrets missing.")
         st.stop()
     creds_dict = dict(st.secrets["gcp_service_account"])
     if "private_key" in creds_dict:
@@ -20,87 +32,114 @@ def connect():
 
 try:
     client = connect()
-    st.success("✅ Bot Logged In")
-
-    # --- STEP 2: AUTO-DISCOVER FILE (No ID needed) ---
-    # We ask the bot to list all files it can see
-    files = client.list_spreadsheet_files()
     
+    # Auto-Discovery of Sheet
+    files = client.list_spreadsheet_files()
     if not files:
-        st.error("❌ The Bot sees 0 files.")
-        st.warning("👉 You MUST click 'Share' on your Google Sheet and add this email as Editor:")
-        st.code(st.secrets["gcp_service_account"]["client_email"])
+        st.error("❌ No files found. Share your sheet with the bot email!")
         st.stop()
     
-    # We automatically pick the first file found
-    target_file = files[0]
-    sheet_id = target_file['id']
-    sheet_name = target_file['name']
+    # Open First File Found
+    sh = client.open_by_key(files[0]['id'])
     
-    st.success(f"✅ Auto-Connected to: '{sheet_name}'")
-    
-    # Open that file
-    sh = client.open_by_key(sheet_id)
-
-    # --- STEP 3: FIND THE RIGHT TAB ---
-    # We look for a tab with "lead" in the name, otherwise take the first one
+    # Find 'Leads' tab or default to first
     found_sheet = None
     for ws in sh.worksheets():
         if "lead" in ws.title.lower():
             found_sheet = ws
             break
-    
-    if found_sheet:
-        sheet = found_sheet
-        st.info(f"📂 Using Tab: '{sheet.title}'")
-    else:
-        sheet = sh.get_worksheet(0)
-        st.info(f"📂 Using First Tab: '{sheet.title}'")
+    sheet = found_sheet if found_sheet else sh.get_worksheet(0)
 
-    # --- STEP 4: LOAD DATA ---
     data = sheet.get_all_records()
     df = pd.DataFrame(data)
 
 except Exception as e:
-    st.error(f"❌ Error: {e}")
+    st.error(f"❌ Connection Error: {e}")
     st.stop()
 
-# --- APP INTERFACE ---
-st.title("TerraTip CRM")
-user = st.sidebar.selectbox("User", ["Manager", "Amit (TC1)", "Rahul (TC2)"])
+# --- 3. SIDEBAR NAVIGATION ---
+st.sidebar.header("TerraTip CRM 🏡")
+user = st.sidebar.selectbox("Login As:", ["Manager", "Amit (TC1)", "Rahul (TC2)"])
 
+# --- 4. ADD NEW LEAD FORM ---
+with st.expander("➕ Add New Lead", expanded=False):
+    with st.form("add_lead_form"):
+        c1, c2 = st.columns(2)
+        new_name = c1.text_input("Client Name")
+        new_phone = c2.text_input("Phone Number")
+        new_source = st.selectbox("Source", ["Meta Ads", "Referral", "Walk-in", "Cold Call"])
+        
+        if st.form_submit_button("Save Lead"):
+            if new_name and new_phone:
+                timestamp = datetime.now().strftime("%Y-%m-%d %H:%M")
+                # Structure: [ID, Time, Name, Phone, Source, Agent, Assigned, Status...]
+                new_row = ["L-New", timestamp, new_name, new_phone, new_source, user, "TC1", "Naya"]
+                sheet.append_row(new_row)
+                st.success(f"Saved {new_name}!")
+                st.rerun()
+            else:
+                st.warning("Name and Phone are required.")
+
+# --- 5. MAIN LEAD LIST ---
+st.divider()
+
+# Filter for Telecallers
 if "TC" in user:
     code = "TC1" if "Amit" in user else "TC2"
-    # Filter using whatever column name exists
     col_match = [c for c in df.columns if "Assigned" in c]
     if col_match:
         df = df[df[col_match[0]] == code]
 
+# Hide Ghost Rows (Empty Names)
+if not df.empty and 'Client Name' in df.columns:
+    df = df[df['Client Name'] != ""]
+
 if df.empty:
-    st.warning("No leads found in this sheet.")
+    st.info("No active leads found.")
 
 for i, row in df.iterrows():
-    # Flexible Column Names
-    name = row.get('Client Name', row.get('Name', 'Unknown'))
+    name = row.get('Client Name', 'Unknown')
     status = row.get('Status', 'Naya')
     phone = str(row.get('Phone', '')).replace(',', '').replace('.', '')
-
-    with st.expander(f"{name} ({status})"):
-        st.write(f"📞 {phone}")
-        st.link_button("Chat", f"https://wa.me/91{phone}")
+    
+    # Icons for visual status
+    status_icon = "⚪"
+    if status == "Sold": status_icon = "🟢"
+    if status == "Lost": status_icon = "🔴"
+    if status == "Site Visit Scheduled": status_icon = "🚕"
+    
+    with st.expander(f"{status_icon} {name}  |  {status}"):
+        c1, c2 = st.columns([2, 1])
         
-        with st.form(f"f_{i}"):
-            new_s = st.selectbox("Status", ["Naya", "Call Done", "Sold"], key=f"s_{i}")
+        with c1:
+            st.write(f"📞 **{phone}**")
+            st.write(f"📌 Source: {row.get('Source', '-')}")
+            
+        with c2:
+            st.link_button("💬 WhatsApp", f"https://wa.me/91{phone}?text=Namaste {name}")
+        
+        with st.form(f"update_{i}"):
+            new_stat = st.selectbox("Change Status", 
+                ["Naya", "Call Done", "Site Visit Scheduled", "Lost", "Sold"], 
+                key=f"s_{i}")
+            
+            note = st.text_input("Add Note", key=f"n_{i}")
+            
             if st.form_submit_button("Update"):
-                # Find Status Column Index automatically
-                status_col_index = 8 # Default
                 try:
-                    # Try to find "Status" column number dynamically
                     headers = sheet.row_values(1)
-                    status_col_index = headers.index("Status") + 1
+                    # Dynamic Column Finding
+                    stat_idx = headers.index("Status") + 1
+                    # Try to find Notes, otherwise ignore
+                    try: note_idx = headers.index("Notes") + 1
+                    except: note_idx = 12 
+                    
+                    real_row = i + 2
+                    sheet.update_cell(real_row, stat_idx, new_stat)
+                    if note:
+                        sheet.update_cell(real_row, note_idx, note)
+                        
+                    st.success("Updated!")
+                    st.rerun()
                 except:
-                    pass
-                
-                sheet.update_cell(i + 2, status_col_index, new_s)
-                st.success("Updated!")
-                st.rerun()
+                    st.error("Could not find 'Status' column.")
