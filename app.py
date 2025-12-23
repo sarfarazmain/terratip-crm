@@ -9,17 +9,12 @@ import time
 # --- CONFIGURATION ---
 st.set_page_config(page_title="TerraTip CRM", layout="wide", page_icon="🏡")
 
-# --- HIDE ALL STREAMLIT BRANDING (CSS HACK) ---
+# --- HIDE STREAMLIT BRANDING ---
 hide_bar = """
     <style>
-        /* Hide the top header (hamburger menu, running man) */
         header {visibility: hidden;}
         #MainMenu {visibility: hidden;}
-        
-        /* Hide the footer (Made with Streamlit) */
         footer {visibility: hidden;}
-        
-        /* Hide the 'Manage App' or 'Deploy' buttons on bottom right */
         .stAppDeployButton {display: none;}
         [data-testid="stElementToolbar"] {display: none;}
         [data-testid="stDecoration"] {display: none;}
@@ -27,7 +22,7 @@ hide_bar = """
 """
 st.markdown(hide_bar, unsafe_allow_html=True)
 
-# --- GLOBAL MESSAGE RELAY SYSTEM ---
+# --- GLOBAL MESSAGE RELAY ---
 def set_feedback(message, type="success"):
     st.session_state['feedback_msg'] = message
     st.session_state['feedback_type'] = type
@@ -41,7 +36,7 @@ def show_feedback():
         elif typ == "warning": st.warning(msg)
         st.session_state['feedback_msg'] = None
 
-# --- 1. AUTHENTICATION & DATABASE FUNCTIONS ---
+# --- 1. DATABASE CONNECTION ---
 @st.cache_resource
 def connect_db():
     scopes = ["https://www.googleapis.com/auth/spreadsheets", "https://www.googleapis.com/auth/drive"]
@@ -53,21 +48,17 @@ def connect_db():
         creds_dict["private_key"] = creds_dict["private_key"].replace("\\n", "\n")
     creds = Credentials.from_service_account_info(creds_dict, scopes=scopes)
     client = gspread.authorize(creds)
-    
     files = client.list_spreadsheet_files()
     if not files:
         st.error("❌ No Sheet found.")
         st.stop()
-    
-    sh = client.open_by_key(files[0]['id'])
-    return sh
+    return client.open_by_key(files[0]['id'])
 
 def hash_pass(password):
     return hashlib.sha256(str.encode(password)).hexdigest()
 
 def init_auth_system(sh):
-    try:
-        ws = sh.worksheet("Users")
+    try: ws = sh.worksheet("Users")
     except:
         ws = sh.add_worksheet(title="Users", rows=100, cols=5)
         ws.append_row(["Username", "Password", "Role", "Name"])
@@ -78,9 +69,7 @@ def check_credentials(username, password, users_df):
     hashed = hash_pass(password)
     user_row = users_df[users_df['Username'] == username]
     if not user_row.empty:
-        stored_pass = user_row.iloc[0]['Password']
-        if stored_pass == hashed:
-            return user_row.iloc[0]
+        if user_row.iloc[0]['Password'] == hashed: return user_row.iloc[0]
     return None
 
 def robust_update(sheet, phone_number, col_index, value):
@@ -89,8 +78,7 @@ def robust_update(sheet, phone_number, col_index, value):
         if cell:
             sheet.update_cell(cell.row, col_index, value)
             return True, "Updated"
-        else:
-            return False, "Lead not found (Deleted?)"
+        return False, "Lead not found"
     except gspread.exceptions.APIError:
         time.sleep(1)
         try:
@@ -98,10 +86,8 @@ def robust_update(sheet, phone_number, col_index, value):
             if cell:
                 sheet.update_cell(cell.row, col_index, value)
                 return True, "Updated"
-        except:
-            return False, "API Error (Try again)"
-    except Exception as e:
-        return False, str(e)
+        except: return False, "API Error"
+    except Exception as e: return False, str(e)
 
 # --- 2. INITIALIZATION ---
 try:
@@ -114,147 +100,92 @@ try:
     for ws in sh.worksheets():
         if "lead" in ws.title.lower(): found_sheet = ws; break
     leads_sheet = found_sheet if found_sheet else sh.get_worksheet(0)
-    
 except Exception as e:
     st.error(f"Connection Error: {e}")
     st.stop()
 
-# --- 3. AUTO-LOGIN & SESSION LOGIC ---
-if 'logged_in' not in st.session_state:
-    st.session_state['logged_in'] = False
+# --- 3. SESSION & LOGIN ---
+if 'logged_in' not in st.session_state: st.session_state['logged_in'] = False
 
-# Auto-Login Check (URL Params)
+# Auto-Login via URL
 if not st.session_state['logged_in']:
-    query_params = st.query_params
-    if "u" in query_params and "k" in query_params:
-        q_user = query_params["u"]
-        q_hash = query_params["k"]
-        
-        # Verify against DB
-        user_row = users_df[users_df['Username'] == q_user]
-        if not user_row.empty:
-            stored_pass = user_row.iloc[0]['Password']
-            if stored_pass == q_hash:
-                st.session_state['logged_in'] = True
-                st.session_state['username'] = user_row.iloc[0]['Username']
-                st.session_state['role'] = user_row.iloc[0]['Role']
-                st.session_state['name'] = user_row.iloc[0]['Name']
-                st.rerun()
+    qp = st.query_params
+    if "u" in qp and "k" in qp:
+        u_row = users_df[users_df['Username'] == qp["u"]]
+        if not u_row.empty and u_row.iloc[0]['Password'] == qp["k"]:
+            st.session_state.update({'logged_in':True, 'username':u_row.iloc[0]['Username'], 
+                                     'role':u_row.iloc[0]['Role'], 'name':u_row.iloc[0]['Name']})
+            st.rerun()
 
-# Login Page
 if not st.session_state['logged_in']:
     col1, col2, col3 = st.columns([1,2,1])
     with col2:
         st.title("🔐 TerraTip Login")
-        with st.form("login_form"):
-            user_input = st.text_input("Username")
-            pass_input = st.text_input("Password", type="password")
-            submit = st.form_submit_button("Login Karein")
-            
-            if submit:
-                # Reload user data
-                users_data = users_sheet.get_all_records()
-                users_df = pd.DataFrame(users_data)
-                
-                user_info = check_credentials(user_input, pass_input, users_df)
-                if user_info is not None:
-                    st.session_state['logged_in'] = True
-                    st.session_state['username'] = user_info['Username']
-                    st.session_state['role'] = user_info['Role']
-                    st.session_state['name'] = user_info['Name']
-                    
-                    # SET URL PARAMS FOR PERSISTENCE
-                    st.query_params["u"] = user_info['Username']
-                    st.query_params["k"] = user_info['Password']
-                    
+        with st.form("login"):
+            u = st.text_input("Username")
+            p = st.text_input("Password", type="password")
+            if st.form_submit_button("Login Karein"):
+                # Reload users to check fresh data
+                users_df = pd.DataFrame(users_sheet.get_all_records())
+                info = check_credentials(u, p, users_df)
+                if info is not None:
+                    st.session_state.update({'logged_in':True, 'username':info['Username'], 
+                                             'role':info['Role'], 'name':info['Name']})
+                    st.query_params["u"] = info['Username']; st.query_params["k"] = info['Password']
                     st.rerun()
-                else:
-                    st.error("❌ Galat Username ya Password.")
+                else: st.error("❌ Galat login")
     st.stop()
 
-# --- 4. APP LAYOUT ---
+# --- 4. DASHBOARD LOGIC ---
 st.sidebar.title("TerraTip CRM 🏡")
 st.sidebar.write(f"👤 **{st.session_state['name']}**")
-st.sidebar.caption(f"Role: {st.session_state['role']}")
-
-# REFRESH DATA BUTTON
-if st.sidebar.button("🔄 Refresh Data"):
-    st.rerun()
-
 if st.sidebar.button("Logout"):
     st.session_state['logged_in'] = False
     st.query_params.clear()
     st.rerun()
 
-def phone_call_btn(phone_number):
-    return f"""<a href="tel:{phone_number}" style="display:inline-block;background-color:#28a745;color:white;padding:5px 12px;border-radius:4px;text-decoration:none;">📞 Call</a>"""
+def phone_btn(num): return f"""<a href="tel:{num}" style="display:inline-block;background-color:#28a745;color:white;padding:5px 12px;border-radius:4px;text-decoration:none;">📞 Call</a>"""
 
-# --- VIEW 1: LEADS DASHBOARD ---
-def show_crm_dashboard(users_df):
-    show_feedback()
+# --- LIVE FEED FRAGMENT (AUTO REFRESH) ---
+# This part refreshes every 10 seconds automatically!
+@st.fragment(run_every=10)
+def show_live_leads_list():
+    # Fetch Fresh Data
+    try:
+        data = leads_sheet.get_all_records()
+        df = pd.DataFrame(data)
+    except: return # Fail silently on network blip
     
-    # Reload Leads Data
-    leads_data = leads_sheet.get_all_records()
-    leads_df = pd.DataFrame(leads_data)
-
-    # Filter Logic
+    # Filter
     if st.session_state['role'] == "Telecaller":
-        col_match = [c for c in leads_df.columns if "Assigned" in c]
-        if col_match:
-            leads_df = leads_df[
-                (leads_df[col_match[0]] == st.session_state['username']) | 
-                (leads_df[col_match[0]] == st.session_state['name']) |
-                (leads_df[col_match[0]] == "TC1")
-            ]
+        c_match = [c for c in df.columns if "Assigned" in c]
+        if c_match:
+            df = df[(df[c_match[0]] == st.session_state['username']) | 
+                    (df[c_match[0]] == st.session_state['name']) |
+                    (df[c_match[0]] == "TC1")]
 
-    # ADD LEAD
-    with st.expander("➕ Naya Lead Jodein", expanded=False):
-        c1, c2 = st.columns(2)
-        name = c1.text_input("Customer Ka Naam")
-        phone = c2.text_input("Phone Number (10 Digits)")
-        c3, c4 = st.columns(2)
-        source = c3.selectbox("Source", ["Meta Ads", "Canopy", "Agent", "Others"])
-        agent_name = ""
-        if source == "Agent": agent_name = c4.text_input("Agent Ka Naam")
-        
-        assigned_to = st.session_state['username'] 
-        if st.session_state['role'] == "Manager":
-            all_users = users_df['Username'].tolist()
-            assigned_to = st.selectbox("Assign To", all_users, index=all_users.index(st.session_state['username']) if st.session_state['username'] in all_users else 0)
-        
-        if st.button("💾 Save Lead", type="primary"):
-            if not name: st.error("⚠️ Naam zaroori hai.")
-            elif not phone.isdigit() or len(phone) != 10: st.error("⚠️ Phone number galat hai.")
-            else:
-                ts = datetime.now().strftime("%Y-%m-%d %H:%M")
-                new_row = ["L-New", ts, name, phone, source, agent_name, assigned_to, "Naya Lead"]
-                leads_sheet.append_row(new_row)
-                set_feedback(f"✅ Lead '{name}' Saved!")
-                st.rerun()
+    if not df.empty and 'Client Name' in df.columns:
+        df = df[df['Client Name'] != ""]
 
-    st.divider()
-    if not leads_df.empty and 'Client Name' in leads_df.columns:
-        leads_df = leads_df[leads_df['Client Name'] != ""]
+    if df.empty:
+        st.info("📭 Abhi koi leads nahi hain.")
+        return
 
-    if leads_df.empty: st.info("📭 Koi leads nahi hain.")
+    st.caption(f"⚡ Live Updates On (Auto-refresh every 10s)")
+    
+    status_opts = ["Naya Lead", "Call Uthaya Nahi / Busy", "Baat Hui - Interested", "Site Visit Scheduled", "Visit Done - Soch Raha Hai", "Faltu / Agent / Spam", "Not Interested (Mehenga Hai)", "Sold (Plot Bik Gaya)"]
 
-    status_options = [
-        "Naya Lead", "Call Uthaya Nahi / Busy", "Baat Hui - Interested",
-        "Site Visit Scheduled", "Visit Done - Soch Raha Hai",
-        "Faltu / Agent / Spam", "Not Interested (Mehenga Hai)", "Sold (Plot Bik Gaya)"
-    ]
-
-    for i, row in leads_df.iterrows():
+    for i, row in df.iterrows():
         name = row.get('Client Name', 'Unknown')
         status = row.get('Status', 'Naya Lead')
         phone = str(row.get('Phone', '')).replace(',', '').replace('.', '')
         
         icon = "⚪"
         if "Sold" in status: icon = "🟢"
-        if "Faltu" in status or "Not Interested" in status: icon = "🔴"
-        if "Visit" in status: icon = "🚕"
-        if "Naya" in status: icon = "⚡"
-        if "Interested" in status: icon = "🔹"
+        elif "Faltu" in status or "Not" in status: icon = "🔴"
+        elif "Visit" in status: icon = "🚕"
+        elif "Naya" in status: icon = "⚡"
+        elif "Interested" in status: icon = "🔹"
         
         with st.expander(f"{icon} {name} | {status}"):
             instr = "❓ Update Status"
@@ -276,102 +207,101 @@ def show_crm_dashboard(users_df):
                 st.write(f"📌 {row.get('Source', '-')}")
                 if row.get('Agent Name'): st.write(f"👤 {row.get('Agent Name')}")
                 st.caption(f"Assigned: {row.get('Assigned', '-')}")
-            with c2:
-                st.markdown(phone_call_btn(phone), unsafe_allow_html=True)
-            with c3:
-                st.link_button("💬 WhatsApp", f"https://wa.me/91{phone}?text=Namaste {name}")
+            with c2: st.markdown(phone_btn(phone), unsafe_allow_html=True)
+            with c3: st.link_button("💬 WhatsApp", f"https://wa.me/91{phone}")
             
+            # Form inside fragment
             with st.form(f"u_{i}"):
-                ns = st.selectbox("Status Badlein", status_options, key=f"s_{i}")
+                ns = st.selectbox("Status", status_opts, key=f"s_{i}")
                 note = st.text_input("Note", key=f"n_{i}")
-                
                 if st.form_submit_button("💾 Update"):
                     try:
-                        headers = leads_sheet.row_values(1)
-                        try: s_idx = headers.index("Status") + 1; n_idx = headers.index("Notes") + 1
-                        except: s_idx=8; n_idx=12
+                        h = leads_sheet.row_values(1)
+                        s_idx = h.index("Status") + 1 if "Status" in h else 8
+                        n_idx = h.index("Notes") + 1 if "Notes" in h else 12
                         
-                        # Robust Update by Phone
-                        success, msg = robust_update(leads_sheet, phone, s_idx, ns)
-                        if success:
+                        succ, msg = robust_update(leads_sheet, phone, s_idx, ns)
+                        if succ:
                             if note: robust_update(leads_sheet, phone, n_idx, note)
                             set_feedback(f"✅ {name} updated!")
                             st.rerun()
-                        else:
-                            st.error(f"❌ Error: {msg}")
-                    except Exception as e:
-                        st.error(f"System Error: {e}")
+                        else: st.error(msg)
+                    except Exception as e: st.error(f"Err: {e}")
 
-# --- VIEW 2: ANALYTICS ---
-def show_analytics_dashboard():
-    st.header("📊 Business Insights")
-    leads_data = leads_sheet.get_all_records()
-    df = pd.DataFrame(leads_data)
-    
-    if df.empty:
-        st.info("No data yet.")
-        return
+# --- STATIC ADD FORM (NO REFRESH WHILE TYPING) ---
+def show_add_lead_form(users_df):
+    with st.expander("➕ Naya Lead Jodein", expanded=False):
+        c1, c2 = st.columns(2)
+        name = c1.text_input("Customer Ka Naam")
+        phone = c2.text_input("Phone Number")
+        c3, c4 = st.columns(2)
+        src = c3.selectbox("Source", ["Meta Ads", "Canopy", "Agent", "Others"])
+        ag = c4.text_input("Agent Name") if src == "Agent" else ""
+        
+        assign = st.session_state['username']
+        if st.session_state['role'] == "Manager":
+            all_u = users_df['Username'].tolist()
+            assign = st.selectbox("Assign To", all_u, index=all_u.index(assign) if assign in all_u else 0)
+        
+        if st.button("💾 Save Lead"):
+            if not name or not phone: st.error("⚠️ Name/Phone zaroori hai")
+            else:
+                ts = datetime.now().strftime("%Y-%m-%d %H:%M")
+                leads_sheet.append_row(["L-New", ts, name, phone, src, ag, assign, "Naya Lead"])
+                set_feedback(f"✅ Lead '{name}' Saved!")
+                st.rerun()
 
-    total = len(df)
-    sold = len(df[df['Status'].str.contains("Sold", na=False)])
-    junk = len(df[df['Status'].str.contains("Faltu|Spam|Not Interested", na=False)])
-    interested = len(df[df['Status'].str.contains("Interested|Visit", na=False)])
+# --- MAIN PAGE ---
+def show_dashboard(users_df):
+    show_feedback()
+    show_add_lead_form(users_df) # Static Part
+    st.divider()
+    show_live_leads_list() # Live Part (Auto Refresh)
+
+def show_analytics():
+    st.header("📊 Insights")
+    df = pd.DataFrame(leads_sheet.get_all_records())
+    if df.empty: return
     
-    m1, m2, m3, m4 = st.columns(4)
-    m1.metric("Total Leads", total)
-    m2.metric("🎉 Sold", sold)
-    m3.metric("🔥 Interested", interested)
-    m4.metric("🗑️ Junk", junk)
+    tot = len(df); sold = len(df[df['Status'].str.contains("Sold", na=False)])
+    junk = len(df[df['Status'].str.contains("Faltu|Not", na=False)])
+    m1, m2, m3 = st.columns(3)
+    m1.metric("Total", tot); m2.metric("Sold", sold); m3.metric("Junk", junk)
     
     st.divider()
     c1, c2 = st.columns(2)
-    with c1:
-        st.subheader("📢 Source Analysis")
+    with c1: 
         if 'Source' in df.columns: st.bar_chart(df['Source'].value_counts())
     with c2:
-        st.subheader("🕵️ Quality Check")
-        junk_rate = round((junk / total) * 100) if total > 0 else 0
-        st.write(f"**Bad Lead %:** {junk_rate}%")
-        st.progress(junk_rate / 100)
-        if junk_rate > 40: st.error("⚠️ Ads check karein. Junk leads zyada hain.")
-        else: st.success("✅ Quality control acha hai.")
+        jr = round((junk/tot)*100) if tot>0 else 0
+        st.write(f"**Junk %:** {jr}%"); st.progress(jr/100)
 
-# --- VIEW 3: ADMIN ---
-def show_admin_panel(users_df, users_sheet):
-    st.header("⚙️ Admin Panel")
+def show_admin(users_df):
+    st.header("⚙️ Admin")
     show_feedback()
-
-    ac1, ac2 = st.columns([1, 2])
-    with ac1:
-        st.subheader("Create User")
-        with st.form("new_user", clear_on_submit=True):
-            new_u = st.text_input("Username")
-            new_p = st.text_input("Password", type="password")
-            new_n = st.text_input("Name")
-            new_r = st.selectbox("Role", ["Telecaller", "Sales Specialist", "Manager"])
+    c1, c2 = st.columns([1,2])
+    with c1:
+        with st.form("nu", clear_on_submit=True):
+            u = st.text_input("User"); p = st.text_input("Pass", type="password")
+            n = st.text_input("Name"); r = st.selectbox("Role", ["Telecaller", "Sales Specialist", "Manager"])
             if st.form_submit_button("Create"):
-                if new_u in users_df['Username'].values: st.error("Exists!")
-                else:
-                    users_sheet.append_row([new_u, hash_pass(new_p), new_r, new_n])
-                    set_feedback(f"✅ User {new_u} created")
-                    st.rerun()
-    with ac2:
-        st.subheader("Team List")
-        st.dataframe(users_df[['Name', 'Username', 'Role']], use_container_width=True, hide_index=True)
-        options = [u for u in users_df['Username'].unique() if u != st.session_state['username']]
-        if options:
-            del_target = st.selectbox("Delete User", options)
+                if u in users_df['Username'].values: st.error("Exists")
+                else: 
+                    users_sheet.append_row([u, hash_pass(p), r, n])
+                    set_feedback(f"✅ Created {u}"); st.rerun()
+    with c2:
+        st.dataframe(users_df[['Name','Username','Role']], hide_index=True)
+        opts = [x for x in users_df['Username'].unique() if x != st.session_state['username']]
+        if opts:
+            dt = st.selectbox("Delete", opts)
             if st.button("❌ Delete"):
-                cell = users_sheet.find(del_target)
-                users_sheet.delete_rows(cell.row)
-                set_feedback(f"🗑️ Deleted {del_target}")
-                st.rerun()
+                users_sheet.delete_rows(users_sheet.find(dt).row)
+                set_feedback(f"Deleted {dt}"); st.rerun()
 
-# --- MAIN ---
 if st.session_state['role'] == "Manager":
-    tab1, tab2, tab3 = st.tabs(["🏠 Dashboard", "📊 Insights", "⚙️ Admin"])
-    with tab1: show_crm_dashboard(users_df)
-    with tab2: show_analytics_dashboard()
-    with tab3: show_admin_panel(users_df, users_sheet)
+    t1, t2, t3 = st.tabs(["🏠 CRM", "📊 Insights", "⚙️ Admin"])
+    with t1: show_dashboard(users_df)
+    with t2: show_analytics()
+    with t3: show_admin(users_df)
 else:
-    show_crm_dashboard(users_df)
+    show_dashboard(users_df)
