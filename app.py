@@ -14,18 +14,22 @@ def connect_to_google_sheets():
         "https://www.googleapis.com/auth/drive"
     ]
     
+    # 1. CHECK SECRETS EXIST
     if "gcp_service_account" not in st.secrets:
-        st.error("❌ Secrets not found!")
+        st.error("❌ Critical Error: Secrets not found in Streamlit settings.")
         st.stop()
     
     try:
+        # 2. LOAD CREDENTIALS
         creds_dict = dict(st.secrets["gcp_service_account"])
+        
+        # Fix the "New Line" bug if present
         if "private_key" in creds_dict:
             creds_dict["private_key"] = creds_dict["private_key"].replace("\\n", "\n")
         
         creds = Credentials.from_service_account_info(creds_dict, scopes=scopes)
         client = gspread.authorize(creds)
-        return client
+        return client, creds_dict.get("client_email")
         
     except Exception as e:
         st.error(f"❌ Authentication Failed: {e}")
@@ -33,33 +37,52 @@ def connect_to_google_sheets():
 
 # --- MAIN APP LOGIC ---
 try:
-    client = connect_to_google_sheets()
+    client, bot_email = connect_to_google_sheets()
     
-    # ---------------------------------------------------------
-    # 👇 THE FIX: WE USE THE URL DIRECTLY (Taken from your screenshot)
-    # ---------------------------------------------------------
-    sheet_url = "https://docs.google.com/spreadsheets/d/1glNrjdnr9sg7nkKh0jcazwZ5_92Rv4ZBeBYFaDZ_khU/edit"
+    # ======================================================
+    # 🕵️‍♂️ DIAGNOSTIC MODE (This runs before loading data)
+    # ======================================================
+    with st.expander("🕵️‍♂️ Click here if you see Connection Errors", expanded=True):
+        st.write(f"**🤖 Bot Email:** `{bot_email}`")
+        st.info("👉 Please ensure your Google Sheet is SHARED with this email as 'Editor'.")
+        
+        st.write("**📂 Files currently visible to this Bot:**")
+        try:
+            # List all sheets the bot can access
+            files = client.list_spreadsheet_files()
+            if not files:
+                st.error("❌ The bot sees 0 files. You have NOT shared the sheet correctly yet.")
+            else:
+                for f in files:
+                    st.success(f"✅ Found Sheet: '{f['name']}' (ID: {f['id']})")
+        except Exception as e:
+            st.warning(f"Could not list files (Drive API might be off): {e}")
+
+    # ======================================================
+    # 📝 LOAD DATA
+    # ======================================================
+    
+    # 1. ATTEMPT TO OPEN BY URL (Replace this if Diagnostic Mode gives you a better ID)
+    # Based on your previous screenshot, this is the URL
+    target_url = "https://docs.google.com/spreadsheets/d/1glNrjdnr9sg7nkKh0jcazwZ5_92Rv4ZBeBYFaDZ_khU/edit"
     
     try:
-        # Open by URL is much safer than Open by Name
-        sheet = client.open_by_url(sheet_url).sheet1
+        sheet = client.open_by_url(target_url).sheet1
         data = sheet.get_all_records()
         df = pd.DataFrame(data)
+    except gspread.exceptions.SpreadsheetNotFound:
+        st.error("❌ ERROR 404: Sheet Not Found.")
+        st.stop()
     except gspread.exceptions.APIError as e:
-         st.error(f"❌ Permission Error: The bot cannot open the sheet.")
-         st.info("Please verify you clicked 'Share' -> pasted the bot email -> Set as Editor.")
-         st.stop()
-    except Exception as e:
-         st.error(f"❌ Connection Error: {e}")
-         st.stop()
+        st.error(f"❌ Google API Error: {e}")
+        st.stop()
 
 except Exception as e:
-    st.error(f"❌ Critical Error: {e}")
+    st.error(f"❌ System Error: {e}")
     st.stop()
 
 # --- SIDEBAR & LOGIN ---
 st.sidebar.title("TerraTip Login")
-st.sidebar.success("✅ Connected to Database") 
 user_user = st.sidebar.selectbox("Select User", ["Manager", "Amit (TC1)", "Rahul (TC2)", "Sales Specialist"])
 
 # --- FILTERING LOGIC ---
@@ -68,10 +91,10 @@ if user_user == "Manager":
 elif "TC" in user_user:
     tc_code = "TC1" if "Amit" in user_user else "TC2"
     
-    # Check if column exists
+    # Flexible Column Checking
     if 'Assigned TC Email' in df.columns:
          filtered_df = df[df['Assigned TC Email'] == tc_code]
-    elif 'Assigned' in df.columns: # Handling partial match from your screenshot
+    elif 'Assigned' in df.columns:
          filtered_df = df[df['Assigned'] == tc_code]
     elif 'Assigned TC' in df.columns:
          filtered_df = df[df['Assigned TC'] == tc_code]
@@ -79,7 +102,6 @@ elif "TC" in user_user:
          st.warning("⚠️ Column 'Assigned TC' not found. Showing all data.")
          filtered_df = df
 elif user_user == "Sales Specialist":
-    # Safe check for Status column
     if 'Status' in df.columns:
         filtered_df = df[df['Status'] == "Site Visit Scheduled"]
     else:
@@ -92,17 +114,17 @@ if filtered_df.empty:
     st.info("No leads found for this view.")
 
 for index, row in filtered_df.iterrows():
-    # Use .get() to avoid errors if column names change
-    client_name = row.get('Client Name', 'Unknown Client')
-    status = row.get('Status', 'Naya')
-    phone = row.get('Phone', '')
+    # Safe Get (.get avoids crashes if column is missing)
+    c_name = row.get('Client Name', 'Unknown')
+    c_status = row.get('Status', 'Naya')
+    c_phone = row.get('Phone', '')
     
-    with st.expander(f"{client_name} ({status})"):
-        st.write(f"**Phone:** {phone}")
+    with st.expander(f"{c_name} ({c_status})"):
+        st.write(f"**Phone:** {c_phone}")
         st.write(f"**Source:** {row.get('Source', 'N/A')}")
         
         # WhatsApp Link
-        wa_link = f"https://wa.me/91{phone}?text=Namaste {client_name}, TerraTip se baat kar raha hoon."
+        wa_link = f"https://wa.me/91{c_phone}?text=Namaste {c_name}, TerraTip se baat kar raha hoon."
         st.link_button("💬 Chat on WhatsApp", wa_link)
         
         # Update Form
@@ -110,20 +132,4 @@ for index, row in filtered_df.iterrows():
             new_status = st.selectbox(
                 "Update Status", 
                 ["Naya", "Call Done", "Site Visit Scheduled", "No Show", "Lost", "Sold"],
-                key=f"status_{index}"
-            )
-            
-            submit = st.form_submit_button("💾 Save Update")
-            
-            if submit:
-                # Find real row (Index + 2 for header/0-index)
-                real_row = index + 2
-                
-                try:
-                    # Update Column 8 (Status) - Ensure this matches your Sheet
-                    # Based on your screenshot, Status looks like Column H (8th)
-                    sheet.update_cell(real_row, 8, new_status)
-                    st.success(f"Updated {client_name}!")
-                    st.rerun()
-                except Exception as e:
-                    st.error(f"Failed to write to Google Sheet: {e}")
+                key=f"
