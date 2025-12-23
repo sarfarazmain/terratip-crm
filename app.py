@@ -12,9 +12,10 @@ import itertools
 # --- CONFIGURATION ---
 st.set_page_config(page_title="TerraTip CRM", layout="wide", page_icon="🏡")
 
-# --- CUSTOM CSS ---
+# --- CUSTOM CSS (FAT FINGER & VISIBILITY) ---
 custom_css = """
     <style>
+        /* HIDE STREAMLIT HEADER BUT KEEP CONTENT VISIBLE */
         header {visibility: hidden;}
         #MainMenu {visibility: hidden;}
         footer {visibility: hidden;}
@@ -22,6 +23,12 @@ custom_css = """
         [data-testid="stElementToolbar"] {display: none;}
         [data-testid="stDecoration"] {display: none;}
         
+        /* ADJUST TOP PADDING (Since header is hidden) */
+        .block-container {
+            padding-top: 1rem !important;
+        }
+
+        /* FAT LEADS */
         .streamlit-expanderHeader {
             font-size: 18px !important;
             font-weight: bold !important;
@@ -137,7 +144,6 @@ def get_row_index(sheet, phone_number):
         return cell.row if cell else None
     except: return None
 
-# --- ID GENERATOR ---
 def generate_lead_id(prefix="L"):
     ts = str(int(time.time()))[-6:] 
     rand = str(random.randint(10, 99))
@@ -185,11 +191,18 @@ if not st.session_state['logged_in']:
                 else: st.error("❌ Invalid")
     st.stop()
 
-# --- APP ---
-st.sidebar.title("TerraTip CRM 🏡")
-st.sidebar.write(f"👤 **{st.session_state['name']}**")
-if st.sidebar.button("Logout"):
-    st.session_state['logged_in'] = False; st.query_params.clear(); st.rerun()
+# --- MAIN APP LAYOUT ---
+
+# 1. TOP BAR (VISIBLE TO EVERYONE)
+c_top_1, c_top_2 = st.columns([3, 1])
+with c_top_1:
+    st.markdown(f"### 🏡 TerraTip CRM\n👤 **{st.session_state['name']}** ({st.session_state['role']})")
+with c_top_2:
+    if st.button("🚪 Logout", key="logout_main", use_container_width=True):
+        st.session_state['logged_in'] = False
+        st.query_params.clear()
+        st.rerun()
+st.divider()
 
 def big_call_btn(num): return f"""<a href="tel:{num}" class="big-btn call-btn">📞 CALL NOW</a>"""
 def big_wa_btn(num, name): return f"""<a href="https://wa.me/91{num}?text=Namaste {name}" class="big-btn wa-btn" target="_blank">💬 WHATSAPP</a>"""
@@ -200,12 +213,9 @@ def show_live_leads_list(users_df, search_q, status_f):
     try: data = leads_sheet.get_all_records(); df = pd.DataFrame(data)
     except: return
 
-    # STRIP SPACES FROM HEADERS
     df.columns = df.columns.str.strip()
 
-    # --- FILTER LOGIC ---
     if st.session_state['role'] == "Telecaller":
-        # Smart search for Assigned
         c_match = [c for c in df.columns if "Assign" in c] 
         if c_match:
             df = df[(df[c_match[0]] == st.session_state['username']) | 
@@ -219,36 +229,24 @@ def show_live_leads_list(users_df, search_q, status_f):
 
     today = date.today()
     
-    # --- LOGIC FIX 1: BETTER PRIORITY & ESCALATION ---
     def get_priority_data(row):
         status = row.get('Status', '')
-        f_date_str = str(row.get('Next Followup', '')).strip() # Ensure column name matches exactly or handle robustly
-        
-        priority = 2 # Default Low
+        f_date_str = str(row.get('Next Followup', '')).strip() 
+        priority = 2
         alert_msg = ""
-        
         if "Naya" in status: 
-            priority = 0
-            alert_msg = "⚡ NEW LEAD"
+            priority = 0; alert_msg = "⚡ NEW LEAD"
         elif f_date_str and len(f_date_str) > 5:
             try:
                 f_date = datetime.strptime(f_date_str, "%Y-%m-%d").date()
-                if f_date < today:
-                    priority = 0
-                    alert_msg = "🔴 OVERDUE (Missed)"
-                elif f_date == today:
-                    priority = 1
-                    alert_msg = "🟡 DUE TODAY"
+                if f_date < today: priority = 0; alert_msg = "🔴 OVERDUE"
+                elif f_date == today: priority = 1; alert_msg = "🟡 DUE TODAY"
             except: pass
-            
         return priority, alert_msg
 
     if not df.empty:
-        # Find Follow Up Column Robustly
         f_col = next((c for c in df.columns if "Follow" in c), None)
         if f_col: df['Next Followup'] = df[f_col]
-        
-        # Apply Logic
         df[['Priority', 'Alert']] = df.apply(lambda row: pd.Series(get_priority_data(row)), axis=1)
         df = df.sort_values(by='Priority', ascending=True)
 
@@ -273,8 +271,6 @@ def show_live_leads_list(users_df, search_q, status_f):
         name = row.get('Client Name', 'Unknown')
         status = row.get('Status', 'Naya Lead')
         phone = str(row.get('Phone', '')).replace(',', '').replace('.', '')
-        
-        # Smart Assign Column
         assign_col_name = next((c for c in df.columns if "Assign" in c), 'Assigned')
         assigned_to = row.get(assign_col_name, '-')
         
@@ -287,7 +283,6 @@ def show_live_leads_list(users_df, search_q, status_f):
         alert_text = row.get('Alert', '')
         action_text, action_color = get_pipeline_action(status)
 
-        # THE FAT EXPANDER
         with st.expander(f"{icon} {alert_text} {name}"):
             if action_color == "blue": st.info(action_text)
             elif action_color == "green": st.success(action_text)
@@ -304,7 +299,6 @@ def show_live_leads_list(users_df, search_q, status_f):
             st.markdown(f"📌 {row.get('Source', '-')}")
             if st.session_state['role'] == "Manager": st.caption(f"Assigned: {assigned_to}")
 
-            # FORM
             with st.form(f"u_{i}"):
                 st.write("📝 **Status:**")
                 ns = st.selectbox("Status", status_opts, key=f"s_{i}", index=status_opts.index(status) if status in status_opts else 0, label_visibility="collapsed")
@@ -330,7 +324,6 @@ def show_live_leads_list(users_df, search_q, status_f):
                 if st.form_submit_button("✅ UPDATE LEAD", type="primary", use_container_width=True):
                     try:
                         h = leads_sheet.row_values(1)
-                        # FIND COLUMNS DYNAMICALLY
                         try: s_idx = next(i for i,v in enumerate(h) if "Status" in v) + 1
                         except: s_idx = 8
                         try: n_idx = next(i for i,v in enumerate(h) if "Notes" in v) + 1
@@ -341,10 +334,6 @@ def show_live_leads_list(users_df, search_q, status_f):
                         except: t_idx = 10
                         try: f_idx = next(i for i,v in enumerate(h) if "Follow" in v) + 1
                         except: f_idx = 15
-                        
-                        # --- LOGIC FIX 2: INCREMENT CALL COUNT ---
-                        # We try to find a "Call Count" column. If not exists, we skip.
-                        # Ideally, add "Call Count" to your Sheet header.
                         try: c_idx = next(i for i,v in enumerate(h) if "Count" in v) + 1
                         except: c_idx = None
 
@@ -354,10 +343,7 @@ def show_live_leads_list(users_df, search_q, status_f):
                             if final_date: robust_update(leads_sheet, phone, f_idx, str(final_date))
                             robust_update(leads_sheet, phone, t_idx, datetime.now().strftime("%Y-%m-%d %H:%M"))
                             
-                            # Increment Call Count if column exists
                             if c_idx:
-                                # Need row index. Robust update finds it internally but doesn't return it.
-                                # Small inefficiency here to re-find row, but safe.
                                 try:
                                     r_num = get_row_index(leads_sheet, phone)
                                     if r_num:
@@ -396,7 +382,6 @@ def show_add_lead_form(users_df):
                 
                 ts = datetime.now().strftime("%Y-%m-%d %H:%M")
                 new_id = generate_lead_id()
-                # Ensure row has enough empty strings for all potential columns
                 row_data = [new_id, ts, name, phone, src, ag, assign, "Naya Lead", "", ts, "", "", "", "", ""] 
                 leads_sheet.append_row(row_data)
                 set_feedback(f"✅ Saved {name}")
@@ -408,7 +393,6 @@ def show_master_insights():
     except: 
         st.error("Could not load data.")
         return
-    
     if df.empty: st.info("No data"); return
 
     df.columns = df.columns.str.strip()
@@ -420,7 +404,6 @@ def show_master_insights():
     m1.metric("Total", tot); m2.metric("Sold", sold); m3.metric("Junk", junk)
     
     st.subheader("2️⃣ Team Activity")
-    
     assign_col = next((c for c in df.columns if "Assign" in c), None)
     
     if assign_col:
@@ -444,13 +427,9 @@ def show_master_insights():
                 "🎉 Sold": sold_count,
                 "🕒 Last Active": last_active
             })
-        
-        if stats:
-            st.dataframe(pd.DataFrame(stats), use_container_width=True, hide_index=True)
-        else:
-            st.info("No activity yet.")
-    else:
-        st.error(f"⚠️ System Error: Could not find 'Assigned' column.")
+        if stats: st.dataframe(pd.DataFrame(stats), use_container_width=True, hide_index=True)
+        else: st.info("No activity yet.")
+    else: st.error(f"⚠️ System Error: Could not find 'Assigned' column.")
 
 def show_admin(users_df):
     st.header("⚙️ Admin")
@@ -510,16 +489,8 @@ def show_admin(users_df):
                         p_raw = str(row[phone_col])
                         p_clean = re.sub(r'\D', '', p_raw)
                         
-                        # --- LOGIC FIX 3: RE-INQUIRY ---
-                        # If duplicate found, check status. If dead, treat as new.
+                        # LOGIC FIX: RE-INQUIRY
                         is_duplicate = p_clean in all_phones
-                        is_dead = False
-                        if is_duplicate:
-                            # We can't easily check status of duplicate without a heavy read
-                            # For simple logic: Just strict Block for now to be safe.
-                            # Advanced logic requires reading the whole sheet into DF earlier.
-                            pass
-
                         if len(p_clean) >= 10 and not is_duplicate:
                             new_id = generate_lead_id()
                             assigned_person = next(agent_cycle)
@@ -553,7 +524,6 @@ def show_dashboard(users_df):
     show_add_lead_form(users_df)
     st.divider()
     
-    # --- STATIC SEARCH & FILTER ---
     c_search, c_filter = st.columns([2, 1])
     search_q = c_search.text_input("🔍 Search", placeholder="Name / Phone", key="search_q")
     
