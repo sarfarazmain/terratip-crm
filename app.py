@@ -55,7 +55,6 @@ def show_feedback():
         msg = st.session_state['feedback_msg']
         typ = st.session_state.get('feedback_type', 'success')
         
-        # Show Toast (Pop-up)
         if typ == "success": 
             st.toast(msg, icon="✅")
             st.success(msg, icon="✅")
@@ -176,8 +175,10 @@ def show_live_leads_list(users_df):
     except: return
 
     c_search, c_filter = st.columns([2, 1])
-    search_query = c_search.text_input("🔍 Search", placeholder="Name / Phone")
-    status_filter = c_filter.multiselect("Filter", df['Status'].unique() if 'Status' in df.columns else [])
+    
+    # --- FIX 2: Added KEY to maintain state on Refresh ---
+    search_query = c_search.text_input("🔍 Search", placeholder="Name / Phone", key="search_query_persistent")
+    status_filter = c_filter.multiselect("Filter", df['Status'].unique() if 'Status' in df.columns else [], key="status_filter_persistent")
 
     if st.session_state['role'] == "Telecaller":
         c_match = [c for c in df.columns if "Assigned" in c]
@@ -324,7 +325,10 @@ def show_add_lead_form(users_df):
 def show_master_insights():
     st.header("📊 Analytics")
     try: df = pd.DataFrame(leads_sheet.get_all_records())
-    except: return
+    except: 
+        st.error("Could not load data.")
+        return
+    
     if df.empty: st.info("No data"); return
 
     st.subheader("1️⃣ Business Pulse")
@@ -333,23 +337,43 @@ def show_master_insights():
     m1,m2,m3 = st.columns(3)
     m1.metric("Total", tot); m2.metric("Sold", sold); m3.metric("Junk", junk)
     
+    # --- FIX 1: Robust Grouping for Team Activity ---
     st.subheader("2️⃣ Team Activity")
+    
     if 'Assigned' in df.columns:
-        summ = []
-        for tc in df['Assigned'].unique():
-            tdf = df[df['Assigned'] == tc]
-            pend = len(tdf[tdf['Status'] == 'Naya Lead'])
-            work = len(tdf[tdf['Status'].str.contains("Busy|Interested|Visit", na=False)])
-            last = "-"
-            if 'Last Call' in tdf.columns:
-                ts = [x for x in tdf['Last Call'] if x]
-                if ts: last = max(ts)
-            summ.append({"User": tc, "Total": len(tdf), "⚠️ Pending": pend, "🔥 Active": work, "🕒 Last Active": last})
-        st.dataframe(pd.DataFrame(summ), use_container_width=True, hide_index=True)
+        # Group by Assigned and Status
+        stats = []
+        for user, user_df in df.groupby('Assigned'):
+            pending = len(user_df[user_df['Status'] == 'Naya Lead'])
+            working = len(user_df[user_df['Status'].str.contains("Busy|Interested|Visit", na=False)])
+            sold_count = len(user_df[user_df['Status'].str.contains("Sold", na=False)])
+            
+            # Find Last Active
+            last_active = "-"
+            if 'Last Call' in user_df.columns:
+                # Filter out empty/NaN dates
+                valid_dates = [d for d in user_df['Last Call'] if str(d).strip() != ""]
+                if valid_dates:
+                    last_active = max(valid_dates) # Simple max string string comparison works for ISO format
+            
+            stats.append({
+                "User": user,
+                "Total Leads": len(user_df),
+                "⚠️ Pending": pending,
+                "🔥 Active": working,
+                "🎉 Sold": sold_count,
+                "🕒 Last Active": last_active
+            })
+        
+        if stats:
+            st.dataframe(pd.DataFrame(stats), use_container_width=True, hide_index=True)
+        else:
+            st.info("No team activity data to display yet.")
+    else:
+        st.error("Column 'Assigned' not found in your Google Sheet. Please check headers.")
 
 def show_admin(users_df):
     st.header("⚙️ Admin")
-    # IMPORTANT: Show feedback message here after reload
     show_feedback()
 
     c1, c2 = st.columns([1,2])
@@ -368,28 +392,23 @@ def show_admin(users_df):
         st.subheader("📥 Bulk Upload (Auto-Distribute)")
         st.caption("Upload CSV. Leads will be distributed among selected agents.")
         
-        # --- SELECT AGENTS FOR DISTRIBUTION ---
-        telecaller_list = users_df[users_df['Role'].isin(['Telecaller', 'Sales Specialist'])]['Username'].tolist()
-        if not telecaller_list: telecaller_list = [st.session_state['username']]
-        
+        # Select Agents Logic
+        telecaller_list = users_df[users_df['Role'].isin(['Telecaller', 'Sales Specialist', 'Manager'])]['Username'].tolist()
         selected_agents = st.multiselect("Assign Leads To:", telecaller_list, default=telecaller_list)
         
         uploaded_file = st.file_uploader("Choose CSV File", type=['csv'])
         
         if uploaded_file is not None and st.button("Start Upload"):
             if not selected_agents:
-                st.error("⚠️ Please select at least one agent to assign leads to.")
+                st.error("⚠️ Please select at least one agent.")
             else:
                 try:
-                    # Robust CSV Read
                     try: df_up = pd.read_csv(uploaded_file, encoding='utf-8')
                     except: 
                         try: uploaded_file.seek(0); df_up = pd.read_csv(uploaded_file, encoding='utf-16', sep='\t')
                         except: uploaded_file.seek(0); df_up = pd.read_csv(uploaded_file, encoding='ISO-8859-1')
                     
                     cols = [c.lower() for c in df_up.columns]
-                    
-                    # Column Hunt
                     name_idx = -1
                     for i, c in enumerate(cols):
                         if "full_name" in c or "fullname" in c: name_idx = i; break
@@ -407,7 +426,6 @@ def show_admin(users_df):
                     rows_to_add = []
                     ts = datetime.now().strftime("%Y-%m-%d %H:%M")
                     
-                    # --- ROUND ROBIN CYCLE (SELECTED AGENTS) ---
                     agent_cycle = itertools.cycle(selected_agents)
                     
                     for idx, row in df_up.iterrows():
@@ -416,7 +434,7 @@ def show_admin(users_df):
                         
                         if len(p_clean) >= 10 and p_clean not in all_phones:
                             new_id = generate_lead_id()
-                            assigned_person = next(agent_cycle) # Distribute!
+                            assigned_person = next(agent_cycle)
                             
                             new_row = [new_id, ts, row[name_col], p_clean, "Meta Ads", "", assigned_person, "Naya Lead", "", ts, "", "", "", "", ""]
                             rows_to_add.append(new_row)
@@ -425,7 +443,7 @@ def show_admin(users_df):
                     
                     if rows_to_add:
                         leads_sheet.append_rows(rows_to_add)
-                        set_feedback(f"✅ SUCCESS: Added {len(rows_to_add)} leads! Distributed to {len(selected_agents)} agents.")
+                        set_feedback(f"✅ Added {len(rows_to_add)} leads! Distributed to {len(selected_agents)} agents.")
                     else:
                         set_feedback("⚠️ No new leads added (duplicates).", "warning")
                     
