@@ -7,8 +7,6 @@ import hashlib
 
 # --- CONFIGURATION ---
 st.set_page_config(page_title="TerraTip CRM", layout="wide", page_icon="🏡")
-
-# Remove top bars
 hide_bar = """<style>header {visibility: hidden;} footer {visibility: hidden;} #MainMenu {visibility: hidden;}</style>"""
 st.markdown(hide_bar, unsafe_allow_html=True)
 
@@ -25,7 +23,6 @@ def connect_db():
     creds = Credentials.from_service_account_info(creds_dict, scopes=scopes)
     client = gspread.authorize(creds)
     
-    # Auto-Discover File
     files = client.list_spreadsheet_files()
     if not files:
         st.error("❌ No Sheet found.")
@@ -38,12 +35,10 @@ def hash_pass(password):
     return hashlib.sha256(str.encode(password)).hexdigest()
 
 def init_auth_system(sh):
-    # Check if 'Users' tab exists, if not create it
     try:
         ws = sh.worksheet("Users")
     except:
         ws = sh.add_worksheet(title="Users", rows=100, cols=5)
-        # Add Header and Default Admin
         ws.append_row(["Username", "Password", "Role", "Name"])
         ws.append_row(["admin", hash_pass("admin123"), "Manager", "System Admin"])
     return ws
@@ -60,13 +55,12 @@ def check_credentials(username, password, users_df):
 # --- 2. INITIALIZATION ---
 try:
     sh = connect_db()
-    
-    # 1. Setup/Get Users Tab
     users_sheet = init_auth_system(sh)
+    
+    # Reload users data fresh every time
     users_data = users_sheet.get_all_records()
     users_df = pd.DataFrame(users_data)
     
-    # 2. Setup/Get Leads Tab
     found_sheet = None
     for ws in sh.worksheets():
         if "lead" in ws.title.lower(): found_sheet = ws; break
@@ -90,6 +84,10 @@ if not st.session_state['logged_in']:
             submit = st.form_submit_button("Login")
             
             if submit:
+                # Refresh data before check
+                users_data = users_sheet.get_all_records()
+                users_df = pd.DataFrame(users_data)
+                
                 user_info = check_credentials(user_input, pass_input, users_df)
                 if user_info is not None:
                     st.session_state['logged_in'] = True
@@ -99,14 +97,13 @@ if not st.session_state['logged_in']:
                     st.rerun()
                 else:
                     st.error("Invalid Username or Password")
-    st.stop() # Stop here if not logged in
+    st.stop()
 
-# --- 4. APP DASHBOARD (Only visible after login) ---
+# --- 4. APP DASHBOARD ---
 
-# Sidebar Info
 st.sidebar.title("TerraTip CRM 🏡")
 st.sidebar.write(f"👤 **{st.session_state['name']}**")
-st.sidebar.write(f"🛡️ {st.session_state['role']}")
+st.sidebar.caption(f"Role: {st.session_state['role']}")
 
 if st.sidebar.button("Logout"):
     st.session_state['logged_in'] = False
@@ -114,23 +111,58 @@ if st.sidebar.button("Logout"):
 
 st.sidebar.divider()
 
-# --- ADMIN PANEL (Only for Manager) ---
+# --- ADMIN PANEL (CREATE, VIEW, DELETE USERS) ---
 if st.session_state['role'] == "Manager":
-    with st.sidebar.expander("⚙️ Manage Users (Admin)"):
+    with st.sidebar.expander("⚙️ Admin Panel (Manage Users)", expanded=False):
+        
+        # A. CREATE USER
+        st.write("### Create New User")
         with st.form("new_user"):
-            new_u = st.text_input("New Username")
-            new_p = st.text_input("New Password", type="password")
+            new_u = st.text_input("Username")
+            new_p = st.text_input("Password", type="password")
             new_n = st.text_input("Full Name")
             new_r = st.selectbox("Role", ["Telecaller", "Sales Specialist", "Manager"])
+            
             if st.form_submit_button("Create User"):
                 if new_u and new_p:
-                    # Check duplicate
                     if new_u in users_df['Username'].values:
-                        st.error("Username exists!")
+                        st.error(f"User '{new_u}' already exists!")
                     else:
                         users_sheet.append_row([new_u, hash_pass(new_p), new_r, new_n])
-                        st.success(f"Created {new_u}!")
-                        st.rerun() # Refresh to update list
+                        st.success(f"✅ User '{new_u}' Created Successfully!")
+                        st.rerun()
+        
+        st.divider()
+        
+        # B. DELETE USER
+        st.write("### Delete User")
+        
+        # Filter out current admin so they don't delete themselves
+        options = [u for u in users_df['Username'].unique() if u != st.session_state['username']]
+        
+        if options:
+            delete_target = st.selectbox("Select User to Remove", options)
+            
+            if st.button("❌ DELETE SELECTED USER", type="primary"):
+                try:
+                    # Find the cell with the username
+                    cell = users_sheet.find(delete_target)
+                    # Delete that row
+                    users_sheet.delete_rows(cell.row)
+                    st.success(f"🗑️ Deleted {delete_target}")
+                    st.rerun()
+                except Exception as e:
+                    st.error(f"Error deleting: {e}")
+        else:
+            st.info("No other users to delete.")
+            
+        st.divider()
+        
+        # C. VIEW USERS LIST
+        st.write("### Current Users List")
+        # Show table but hide Password column for security
+        display_df = users_df[['Name', 'Username', 'Role']]
+        st.dataframe(display_df, hide_index=True)
 
 # --- MAIN CRM LOGIC ---
 
@@ -138,18 +170,14 @@ if st.session_state['role'] == "Manager":
 leads_data = leads_sheet.get_all_records()
 leads_df = pd.DataFrame(leads_data)
 
-# 2. Filter Logic (Based on Role)
+# 2. Filter Logic
 if st.session_state['role'] == "Telecaller":
-    # Filter for their name or ID
-    # We match "Name" from login to "Assigned" column in Leads
     col_match = [c for c in leads_df.columns if "Assigned" in c]
     if col_match:
-        # We assume the 'Assigned' column in Excel uses the Telecaller's Name or Username
-        # Let's try matching both
         leads_df = leads_df[
             (leads_df[col_match[0]] == st.session_state['username']) | 
             (leads_df[col_match[0]] == st.session_state['name']) |
-            (leads_df[col_match[0]] == "TC1") # Fallback for old data
+            (leads_df[col_match[0]] == "TC1")
         ]
 
 # 3. Add Lead Form
@@ -161,8 +189,6 @@ with st.expander("➕ Add New Lead", expanded=False):
         source = st.selectbox("Source", ["Meta Ads", "Referral", "Cold Call"])
         if st.form_submit_button("Save"):
             ts = datetime.now().strftime("%Y-%m-%d %H:%M")
-            # Modify this row to match your Excel structure exactly!
-            # Example: [ID, Time, Name, Phone, Source, Agent, Assigned, Status...]
             new_row = ["L-New", ts, name, phone, source, st.session_state['name'], st.session_state['username'], "Naya"]
             leads_sheet.append_row(new_row)
             st.success("Saved!")
@@ -171,7 +197,6 @@ with st.expander("➕ Add New Lead", expanded=False):
 # 4. Display Leads
 st.divider()
 
-# Ghost Row Cleaner
 if not leads_df.empty and 'Client Name' in leads_df.columns:
     leads_df = leads_df[leads_df['Client Name'] != ""]
 
