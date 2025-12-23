@@ -15,7 +15,7 @@ st.markdown(hide_bar, unsafe_allow_html=True)
 def connect_db():
     scopes = ["https://www.googleapis.com/auth/spreadsheets", "https://www.googleapis.com/auth/drive"]
     if "gcp_service_account" not in st.secrets:
-        st.error("❌ Secrets missing. Please check Streamlit settings.")
+        st.error("❌ Secrets missing.")
         st.stop()
     creds_dict = dict(st.secrets["gcp_service_account"])
     if "private_key" in creds_dict:
@@ -25,7 +25,7 @@ def connect_db():
     
     files = client.list_spreadsheet_files()
     if not files:
-        st.error("❌ Koi Sheet nahi mili. Bot email ko Editor banayein.")
+        st.error("❌ No Sheet found.")
         st.stop()
     
     sh = client.open_by_key(files[0]['id'])
@@ -68,7 +68,7 @@ except Exception as e:
     st.error(f"Connection Error: {e}")
     st.stop()
 
-# --- 3. LOGIN LOGIC (HINGLISH) ---
+# --- 3. LOGIN LOGIC ---
 if 'logged_in' not in st.session_state:
     st.session_state['logged_in'] = False
 
@@ -122,8 +122,8 @@ def show_crm_dashboard(users_df):
                 (leads_df[col_match[0]] == "TC1")
             ]
 
-    # 3. ADD NEW LEAD (HINGLISH)
-    with st.expander("➕ Naya Lead Jodein (Add New)", expanded=False):
+    # 3. ADD NEW LEAD
+    with st.expander("➕ Naya Lead Jodein", expanded=False):
         c1, c2 = st.columns(2)
         name = c1.text_input("Customer Ka Naam")
         phone = c2.text_input("Phone Number (10 Digits)")
@@ -138,19 +138,19 @@ def show_crm_dashboard(users_df):
         assigned_to = st.session_state['username'] 
         if st.session_state['role'] == "Manager":
             all_users = users_df['Username'].tolist()
-            # "Kisko Dena Hai?" means "Who to assign to?"
             assigned_to = st.selectbox("Kisko Dena Hai? (Assign To)", all_users, index=all_users.index(st.session_state['username']) if st.session_state['username'] in all_users else 0)
         
         if st.button("💾 Lead Save Karein", type="primary"):
             if not name:
                 st.error("⚠️ Customer ka naam likhna zaroori hai.")
             elif not phone.isdigit() or len(phone) != 10:
-                st.error("⚠️ Galat Phone Number. Sirf 10 digit ka number likhein.")
+                st.error("⚠️ Galat Phone Number.")
             elif source == "Agent" and not agent_name:
                 st.error("⚠️ Agent ka naam likhna zaroori hai.")
             else:
                 ts = datetime.now().strftime("%Y-%m-%d %H:%M")
-                new_row = ["L-New", ts, name, phone, source, agent_name, assigned_to, "Naya"]
+                # Default status is 'Naya Lead'
+                new_row = ["L-New", ts, name, phone, source, agent_name, assigned_to, "Naya Lead"]
                 leads_sheet.append_row(new_row)
                 st.success(f"✅ Lead Save Ho Gaya! (Assigned to {assigned_to})")
                 st.rerun()
@@ -163,31 +163,61 @@ def show_crm_dashboard(users_df):
     if leads_df.empty:
         st.info("📭 Abhi koi leads nahi hain.")
 
-    # --- HINGLISH INSTRUCTIONS ---
+    # --- NEW PIPELINE LOGIC ---
     def get_instruction(status):
-        if status == "Naya": return "📞 ACTION: Abhi call karein aur project samjhayein."
-        if status == "Call Done": return "📅 ACTION: Site Visit ke liye manayein."
-        if status == "Site Visit Scheduled": return "📍 ACTION: Visit se 2 ghante pehle confirm karein."
-        if status == "No Show": return "🔄 ACTION: Visit miss ho gayi. Phir se reschedule karein."
-        if status == "Lost": return "❌ ACTION: Isko call nahi karna hai."
-        if status == "Sold": return "🎉 ACTION: Booking amount check karein!"
+        if status == "Naya Lead": 
+            return "⚡ ACTION: Abhi call karein aur project samjhayein."
+        if status == "Call Uthaya Nahi / Busy": 
+            return "⏰ ACTION: 4 ghante baad phir try karein. WhatsApp par 'Hello' bhejein."
+        if status == "Baat Hui - Interested": 
+            return "💬 ACTION: WhatsApp par Brochure bhejein aur Site Visit ke liye manayein."
+        if status == "Site Visit Scheduled": 
+            return "📍 ACTION: Visit se 2 ghante pehle confirm karein."
+        if status == "Visit Done - Soch Raha Hai": 
+            return "🤝 ACTION: Booking amount ke liye baat karein. Deal close karein!"
+        if status == "Faltu / Agent / Spam": 
+            return "🗑️ ACTION: Isko ignore karein. Dobara call na karein."
+        if status == "Not Interested (Mehenga Hai)": 
+            return "❌ ACTION: Call na karein. Future project ke liye rakhein."
+        if status == "Sold (Plot Bik Gaya)": 
+            return "🎉 ACTION: Mithai khilayein!"
         return "❓ ACTION: Status update karein."
+
+    # Status Options List
+    status_options = [
+        "Naya Lead",
+        "Call Uthaya Nahi / Busy",
+        "Baat Hui - Interested",
+        "Site Visit Scheduled",
+        "Visit Done - Soch Raha Hai",
+        "Faltu / Agent / Spam",
+        "Not Interested (Mehenga Hai)",
+        "Sold (Plot Bik Gaya)"
+    ]
 
     for i, row in leads_df.iterrows():
         name = row.get('Client Name', 'Unknown')
-        status = row.get('Status', 'Naya')
+        status = row.get('Status', 'Naya Lead')
         phone = str(row.get('Phone', '')).replace(',', '').replace('.', '')
         
+        # Color coding icons
         icon = "⚪"
-        if status == "Sold": icon = "🟢"
-        if status == "Lost": icon = "🔴"
-        if status == "Site Visit Scheduled": icon = "🚕"
-        if status == "Naya": icon = "⚡"
+        if "Sold" in status: icon = "🟢"
+        if "Faltu" in status or "Not Interested" in status: icon = "🔴"
+        if "Visit" in status: icon = "🚕"
+        if "Naya" in status: icon = "⚡"
+        if "Interested" in status: icon = "🔹"
         
         with st.expander(f"{icon} {name} | {status}"):
-            # INSTRUCTION BOX
+            # ACTION BOX
             instruction = get_instruction(status)
-            st.info(instruction)
+            if "ACTION" in instruction:
+                if "🗑️" in instruction or "❌" in instruction:
+                    st.error(instruction)
+                elif "🎉" in instruction:
+                    st.success(instruction)
+                else:
+                    st.info(instruction)
             
             c1, c2 = st.columns([2, 1])
             with c1:
@@ -200,55 +230,50 @@ def show_crm_dashboard(users_df):
                 st.link_button("💬 WhatsApp", f"https://wa.me/91{phone}?text=Namaste {name}, TerraTip se baat kar raha hoon.")
             
             with st.form(f"u_{i}"):
-                ns = st.selectbox("Status Badlein", ["Naya", "Call Done", "Site Visit Scheduled", "No Show", "Lost", "Sold"], key=f"s_{i}")
+                # Use the new status list here
+                ns = st.selectbox("Status Badlein (Result Kya Hua?)", status_options, key=f"s_{i}")
                 note = st.text_input("Koi Note Likhein (Optional)", key=f"n_{i}")
                 
-                if st.form_submit_button("💾 Status Update Karein"):
-                    # ROBUST COLUMN FINDING (THE FIX)
+                if st.form_submit_button("💾 Update Result"):
                     try:
                         headers = leads_sheet.row_values(1)
-                        
-                        # Find Status Column (Try name, else default to 8)
                         try: s_idx = headers.index("Status") + 1
                         except: s_idx = 8 
-                        
-                        # Find Notes Column (Try name, else default to 12)
                         try: n_idx = headers.index("Notes") + 1
                         except: n_idx = 12
                         
                         real_row = i + 2
                         leads_sheet.update_cell(real_row, s_idx, ns)
                         if note: leads_sheet.update_cell(real_row, n_idx, note)
-                        
                         st.success("✅ Update Ho Gaya!")
                         st.rerun()
                     except Exception as e:
                         st.error(f"❌ Error: {e}")
 
 def show_admin_panel(users_df, users_sheet):
-    st.header("⚙️ Admin Panel (Settings)")
+    st.header("⚙️ Admin Panel")
     if 'admin_msg' in st.session_state and st.session_state['admin_msg']:
         st.success(st.session_state['admin_msg'])
         st.session_state['admin_msg'] = None
 
     ac1, ac2 = st.columns([1, 2])
     with ac1:
-        st.subheader("Naya Banda Jodein (Create User)")
+        st.subheader("Naya Banda Jodein")
         with st.form("new_user", clear_on_submit=True):
             new_u = st.text_input("Username")
             new_p = st.text_input("Password", type="password")
-            new_n = st.text_input("Poora Naam (Full Name)")
+            new_n = st.text_input("Poora Naam")
             new_r = st.selectbox("Role", ["Telecaller", "Sales Specialist", "Manager"])
             if st.form_submit_button("Create User"):
                 if new_u and new_p:
                     if new_u in users_df['Username'].values:
-                        st.error("⚠️ Ye username pehle se hai!")
+                        st.error("⚠️ Username exists!")
                     else:
                         users_sheet.append_row([new_u, hash_pass(new_p), new_r, new_n])
                         st.session_state['admin_msg'] = f"✅ User '{new_u}' ban gaya!"
                         st.rerun()
     with ac2:
-        st.subheader("Abhi Ki Team (Team List)")
+        st.subheader("Team List")
         st.dataframe(users_df[['Name', 'Username', 'Role']], use_container_width=True, hide_index=True)
         st.divider()
         
