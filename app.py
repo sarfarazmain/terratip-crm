@@ -3,9 +3,10 @@ import pandas as pd
 import gspread
 from google.oauth2.service_account import Credentials
 
+# --- PAGE CONFIG ---
 st.set_page_config(page_title="TerraTip CRM", page_icon="🏡", layout="wide")
 
-# --- CONNECTION ---
+# --- CONNECTION FUNCTION ---
 @st.cache_resource
 def connect_to_google_sheets():
     scopes = [
@@ -33,46 +34,49 @@ def connect_to_google_sheets():
 try:
     client, bot_email = connect_to_google_sheets()
     
-    # --- DIAGNOSTIC: TEST DRIVE API ---
-    with st.expander("🕵️‍♂️ Connection Diagnostics (Check here first!)", expanded=True):
-        st.write(f"**🤖 Bot Email:** `{bot_email}`")
-        try:
-            # Try to list files. If this fails, Drive API is OFF.
-            files = client.list_spreadsheet_files()
-            if not files:
-                st.warning("⚠️ The Bot sees 0 files. Google Drive API might be OFF or sync is delayed.")
-            else:
-                st.success(f"✅ The Bot can see {len(files)} files. Connection is GOOD.")
-                for f in files:
-                    st.text(f"Found: {f['name']} (ID: {f['id']})")
-        except Exception as e:
-            st.error("❌ CRITICAL: Google Drive API is DISABLED.")
-            st.info("👉 Go to Cloud Console > APIs > Enable 'Google Drive API'.")
-            st.stop()
-
-    # --- OPEN SHEET ---
-    # We use the ID from your screenshot
+    # ID from your diagnostics (Confirmed Correct)
     sheet_id = "1glNrjdnr9sg7nkKh0jcazwZ5_92Rv4ZBeBYFaDZ_khU"
     
-    sheet = client.open_by_key(sheet_id).sheet1
-    data = sheet.get_all_records()
-    df = pd.DataFrame(data)
+    try:
+        # Step 1: Open the Spreadsheet
+        sh = client.open_by_key(sheet_id)
+        
+        # Step 2: Open the specific "Leads" tab (The Fix!)
+        # We try 'Leads' first. If that fails, we grab the first visible tab.
+        try:
+            sheet = sh.worksheet("Leads")
+        except:
+            sheet = sh.get_worksheet(0)
+            
+        data = sheet.get_all_records()
+        df = pd.DataFrame(data)
+
+    except Exception as e:
+        st.error(f"❌ Error Reading Data: {e}")
+        st.stop()
 
 except Exception as e:
-    st.error(f"❌ Error Opening Sheet: {e}")
+    st.error(f"❌ System Error: {e}")
     st.stop()
 
 # --- APP INTERFACE ---
 st.sidebar.title("TerraTip CRM")
+st.sidebar.success("✅ Database Online")
 user_user = st.sidebar.selectbox("User", ["Manager", "Amit (TC1)", "Rahul (TC2)"])
 
 # Filter Data
 if "TC" in user_user:
     tc_code = "TC1" if "Amit" in user_user else "TC2"
+    # Flexible column matching
     if 'Assigned' in df.columns:
          df = df[df['Assigned'] == tc_code]
+    elif 'Assigned TC' in df.columns:
+         df = df[df['Assigned TC'] == tc_code]
 
 st.title(f"Welcome, {user_user}")
+
+if df.empty:
+    st.info("No leads found.")
 
 for index, row in df.iterrows():
     c_name = row.get('Client Name', 'Unknown')
@@ -88,6 +92,7 @@ for index, row in df.iterrows():
         with st.form(key=f"f_{index}"):
             new_stat = st.selectbox("Status", ["Naya", "Call Done", "Lost", "Sold"], key=f"s_{index}")
             if st.form_submit_button("Update"):
-                sheet.update_cell(index + 2, 8, new_stat) # Col 8 = Status
+                # Update Column H (8th column). Adjust if needed.
+                sheet.update_cell(index + 2, 8, new_stat) 
                 st.success("Updated!")
                 st.rerun()
