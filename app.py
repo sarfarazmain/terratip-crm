@@ -12,7 +12,7 @@ import itertools
 # --- CONFIGURATION ---
 st.set_page_config(page_title="TerraTip CRM", layout="wide", page_icon="🏡")
 
-# --- CUSTOM CSS (MOBILE OPTIMIZED) ---
+# --- CUSTOM CSS (FAT FINGER EDITION) ---
 custom_css = """
     <style>
         header {visibility: hidden;}
@@ -22,44 +22,47 @@ custom_css = """
         [data-testid="stElementToolbar"] {display: none;}
         [data-testid="stDecoration"] {display: none;}
         
-        /* CARD STYLING */
-        [data-testid="stExpander"] {
-            background-color: #1E1E1E;
-            border: 1px solid #444;
-            border-radius: 12px;
-            margin-bottom: 12px;
-            box-shadow: 0 4px 6px rgba(0,0,0,0.3);
+        /* MAKE LEAD HEADERS HUGE AND CLICKABLE */
+        .streamlit-expanderHeader {
+            font-size: 18px !important;
+            font-weight: bold !important;
+            padding: 20px !important; /* Huge touch target */
+            background-color: #262730 !important;
+            border: 1px solid #444 !important;
+            border-radius: 10px !important;
+            margin-bottom: 8px !important;
         }
         
-        /* MASSIVE BUTTONS */
+        /* CARD BODY */
+        [data-testid="stExpander"] {
+            border: None !important;
+            box-shadow: None !important;
+        }
+        
+        /* ACTION BUTTONS */
         .big-btn {
             display: block;
             width: 100%;
-            padding: 16px; 
+            padding: 14px; 
             text-align: center;
             border-radius: 8px;
             text-decoration: none;
-            font-weight: 900;
-            font-size: 18px;
-            text-transform: uppercase;
-            letter-spacing: 1px;
-            transition: all 0.2s;
+            font-weight: 800;
+            font-size: 16px;
+            letter-spacing: 0.5px;
+            margin-bottom: 5px;
         }
-        .big-btn:active { transform: scale(0.98); }
         .call-btn { background-color: #28a745; color: white !important; }
         .wa-btn { background-color: #25D366; color: white !important; }
         
-        /* FORM CLEANUP */
-        .stRadio > div { gap: 12px; }
+        /* FORM INPUTS */
         div[role="radiogroup"] > label {
-            background: #2b2b2b;
-            padding: 10px;
-            border-radius: 6px;
+            padding: 12px;
+            background: #1e1e1e;
             border: 1px solid #333;
+            border-radius: 6px;
             width: 100%;
-        }
-        div[role="radiogroup"] > label:hover {
-            border-color: #666;
+            margin-bottom: 5px;
         }
     </style>
 """
@@ -189,15 +192,14 @@ if st.sidebar.button("Logout"):
 def big_call_btn(num): return f"""<a href="tel:{num}" class="big-btn call-btn">📞 CALL NOW</a>"""
 def big_wa_btn(num, name): return f"""<a href="https://wa.me/91{num}?text=Namaste {name}" class="big-btn wa-btn" target="_blank">💬 WHATSAPP</a>"""
 
+# --- LIVE FEED (FRAGMENT) ---
+# NOTE: Filters are passed IN so they don't reset when this fragment refreshes
 @st.fragment(run_every=10)
-def show_live_leads_list(users_df):
+def show_live_leads_list(users_df, search_q, status_f):
     try: data = leads_sheet.get_all_records(); df = pd.DataFrame(data)
     except: return
 
-    c_search, c_filter = st.columns([2, 1])
-    search_query = c_search.text_input("🔍 Search", placeholder="Name / Phone", key="search_query_persistent")
-    status_filter = c_filter.multiselect("Filter", df['Status'].unique() if 'Status' in df.columns else [], key="status_filter_persistent")
-
+    # --- FILTER LOGIC (Inside Fragment to apply to fresh data) ---
     if st.session_state['role'] == "Telecaller":
         c_match = [c for c in df.columns if "Assigned" in c]
         if c_match:
@@ -205,8 +207,10 @@ def show_live_leads_list(users_df):
                     (df[c_match[0]] == st.session_state['name']) |
                     (df[c_match[0]] == "TC1")]
 
-    if search_query: df = df[df.astype(str).apply(lambda x: x.str.contains(search_query, case=False)).any(axis=1)]
-    if status_filter: df = df[df['Status'].isin(status_filter)]
+    if search_q: 
+        df = df[df.astype(str).apply(lambda x: x.str.contains(search_q, case=False)).any(axis=1)]
+    if status_f: 
+        df = df[df['Status'].isin(status_f)]
 
     today = date.today()
     def get_priority(row):
@@ -228,19 +232,20 @@ def show_live_leads_list(users_df):
     if df.empty: st.info("📭 No leads found."); return
 
     st.caption(f"⚡ Live: {len(df)} Leads")
-    # STATUS LIST (Matches your Sheet)
+    
+    # STATUS & PIPELINE
     status_opts = ["Naya Lead", "Call Uthaya Nahi / Busy", "Baat Hui - Interested", "Site Visit Scheduled", "Visit Done - Soch Raha Hai", "Faltu / Agent / Spam", "Not Interested (Mehenga Hai)", "Sold (Plot Bik Gaya)"]
     all_telecallers = users_df['Username'].tolist()
 
     def get_pipeline_action(status):
-        if "Naya" in status: return ("⚡ ACTION: Abhi Call Karein", "blue")
-        if "Busy" in status: return ("⏰ ACTION: 4 Ghante baad try karein", "orange")
-        if "Interested" in status: return ("💬 ACTION: WhatsApp Brochure bhejein", "green")
-        if "Scheduled" in status: return ("📍 ACTION: Visit Confirm Karein", "green")
-        if "Visit Done" in status: return ("🤝 ACTION: Closing ke liye push karein", "blue")
+        if "Naya" in status: return ("⚡ ACTION: Call Now", "blue")
+        if "Busy" in status: return ("⏰ ACTION: Retry in 4 hrs", "orange")
+        if "Interested" in status: return ("💬 ACTION: WhatsApp Brochure", "green")
+        if "Scheduled" in status: return ("📍 ACTION: Confirm Visit", "green")
+        if "Visit Done" in status: return ("🤝 ACTION: Close Deal", "blue")
         if "Faltu" in status: return ("🗑️ ACTION: Ignore", "red")
         if "Sold" in status: return ("🎉 ACTION: Party!", "green")
-        return ("❓ ACTION: Update Status", "grey")
+        return ("❓ ACTION: Update", "grey")
 
     for i, row in df.iterrows():
         name = row.get('Client Name', 'Unknown')
@@ -257,6 +262,7 @@ def show_live_leads_list(users_df):
         alert = "🔔 CALL DUE | " if row.get('Priority') == 1 else ""
         action_text, action_color = get_pipeline_action(status)
 
+        # THE FAT EXPANDER
         with st.expander(f"{icon} {alert}{name}"):
             if action_color == "blue": st.info(action_text)
             elif action_color == "green": st.success(action_text)
@@ -264,23 +270,25 @@ def show_live_leads_list(users_df):
             elif action_color == "red": st.error(action_text)
             else: st.info(action_text)
             
-            # --- BIG BUTTONS ---
+            # HUGE BUTTONS
             b1, b2 = st.columns(2)
             with b1: st.markdown(big_call_btn(phone), unsafe_allow_html=True)
             with b2: st.markdown(big_wa_btn(phone, name), unsafe_allow_html=True)
-            st.write("") 
-            st.markdown(f"**📞 {phone}** | 📌 {row.get('Source', '-')}")
+            
+            st.write("")
+            st.markdown(f"**📞 {phone}**")
+            st.markdown(f"📌 {row.get('Source', '-')}")
             if st.session_state['role'] == "Manager": st.caption(f"Assigned: {assigned_to}")
 
+            # FORM
             with st.form(f"u_{i}"):
-                # UX UPGRADE: Use Radio instead of Selectbox for easier tapping
-                st.write("📝 **Change Status:**")
-                ns = st.selectbox("Select Status", status_opts, key=f"s_{i}", index=status_opts.index(status) if status in status_opts else 0, label_visibility="collapsed")
+                st.write("📝 **Status:**")
+                # RADIO BUTTONS FOR EASY TAP
+                ns = st.selectbox("Status", status_opts, key=f"s_{i}", index=status_opts.index(status) if status in status_opts else 0, label_visibility="collapsed")
                 
                 c_u1, c_u2 = st.columns(2)
-                note = c_u1.text_input("Note", key=f"n_{i}", placeholder="Client said...")
+                note = c_u1.text_input("Note", key=f"n_{i}", placeholder="Note...")
                 
-                # UX UPGRADE: Compact Date Buttons
                 c_u2.write("📅 Follow-up:")
                 date_option = c_u2.radio("Follow-up", ["None", "Tom", "3 Days", "1 Wk"], horizontal=True, key=f"radio_{i}", label_visibility="collapsed")
                 
@@ -293,12 +301,10 @@ def show_live_leads_list(users_df):
                 if st.session_state['role'] == "Manager":
                     new_assign = st.selectbox("Re-Assign:", all_telecallers, index=all_telecallers.index(assigned_to) if assigned_to in all_telecallers else 0, key=f"a_{i}")
 
-                # MASSIVE UPDATE BUTTON
                 st.write("")
-                if st.form_submit_button("✅ UPDATE LEAD STATUS", type="primary", use_container_width=True):
+                if st.form_submit_button("✅ UPDATE LEAD", type="primary", use_container_width=True):
                     try:
                         h = leads_sheet.row_values(1)
-                        # Dynamic Column Finder
                         try: s_idx = h.index("Status")+1
                         except: s_idx = 8
                         try: n_idx = h.index("Notes")+1 
@@ -361,7 +367,6 @@ def show_master_insights():
     
     if df.empty: st.info("No data"); return
 
-    # --- FIX: NORMALIZE HEADERS (Strip spaces) ---
     df.columns = df.columns.str.strip()
 
     st.subheader("1️⃣ Business Pulse")
@@ -371,8 +376,6 @@ def show_master_insights():
     m1.metric("Total", tot); m2.metric("Sold", sold); m3.metric("Junk", junk)
     
     st.subheader("2️⃣ Team Activity")
-    
-    # Check for 'Assigned' OR 'Assigned To'
     assign_col = 'Assigned' if 'Assigned' in df.columns else 'Assigned To'
     
     if assign_col in df.columns:
@@ -383,7 +386,6 @@ def show_master_insights():
             sold_count = len(user_df[user_df['Status'].str.contains("Sold", na=False)])
             
             last_active = "-"
-            # Check for 'Last Call'
             lc_col = 'Last Call' if 'Last Call' in df.columns else None
             if lc_col:
                 valid_dates = [str(d) for d in user_df[lc_col] if str(d).strip() != ""]
@@ -423,7 +425,6 @@ def show_admin(users_df):
         
         st.divider()
         st.subheader("📥 Bulk Upload (Auto-Distribute)")
-        st.caption("Upload CSV. Leads will be distributed among selected agents.")
         
         telecaller_list = users_df[users_df['Role'].isin(['Telecaller', 'Sales Specialist', 'Manager'])]['Username'].tolist()
         selected_agents = st.multiselect("Assign Leads To:", telecaller_list, default=telecaller_list)
@@ -496,7 +497,21 @@ def show_dashboard(users_df):
     show_feedback()
     show_add_lead_form(users_df)
     st.divider()
-    show_live_leads_list(users_df)
+    
+    # --- STATIC SEARCH & FILTER (Outside Fragment) ---
+    c_search, c_filter = st.columns([2, 1])
+    search_q = c_search.text_input("🔍 Search", placeholder="Name / Phone", key="search_q")
+    
+    # Get Status options (requires reading sheet once)
+    try: 
+        df_temp = pd.DataFrame(leads_sheet.get_all_records())
+        status_opts = df_temp['Status'].unique() if 'Status' in df_temp.columns else []
+    except: status_opts = []
+    
+    status_f = c_filter.multiselect("Filter", status_opts, key="status_f")
+    
+    # --- PASS VALUES TO FRAGMENT ---
+    show_live_leads_list(users_df, search_q, status_f)
 
 if st.session_state['role'] == "Manager":
     t1, t2, t3 = st.tabs(["🏠 CRM", "📊 Insights", "⚙️ Admin"])
