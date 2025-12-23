@@ -19,7 +19,6 @@ custom_css = """
         [data-testid="stElementToolbar"] {display: none;}
         [data-testid="stDecoration"] {display: none;}
         
-        /* CARD STYLING */
         [data-testid="stExpander"] {
             background-color: #1E1E1E;
             border: 1px solid #444;
@@ -27,7 +26,6 @@ custom_css = """
             margin-bottom: 10px;
         }
         
-        /* BIG BUTTONS */
         .big-btn {
             display: block;
             width: 100%;
@@ -151,7 +149,6 @@ st.sidebar.write(f"👤 **{st.session_state['name']}**")
 if st.sidebar.button("Logout"):
     st.session_state['logged_in'] = False; st.query_params.clear(); st.rerun()
 
-# --- BIG BUTTON HELPER ---
 def big_call_btn(num): return f"""<a href="tel:{num}" class="big-btn call-btn">📞 CALL NOW</a>"""
 def big_wa_btn(num, name): return f"""<a href="https://wa.me/91{num}?text=Namaste {name}" class="big-btn wa-btn" target="_blank">💬 WHATSAPP</a>"""
 
@@ -160,7 +157,6 @@ def show_live_leads_list(users_df):
     try: data = leads_sheet.get_all_records(); df = pd.DataFrame(data)
     except: return
 
-    # --- SEARCH & FILTER ---
     c_search, c_filter = st.columns([2, 1])
     search_query = c_search.text_input("🔍 Search", placeholder="Name / Phone")
     status_filter = c_filter.multiselect("Filter", df['Status'].unique() if 'Status' in df.columns else [])
@@ -172,12 +168,9 @@ def show_live_leads_list(users_df):
                     (df[c_match[0]] == st.session_state['name']) |
                     (df[c_match[0]] == "TC1")]
 
-    if search_query:
-        df = df[df.astype(str).apply(lambda x: x.str.contains(search_query, case=False)).any(axis=1)]
-    if status_filter:
-        df = df[df['Status'].isin(status_filter)]
+    if search_query: df = df[df.astype(str).apply(lambda x: x.str.contains(search_query, case=False)).any(axis=1)]
+    if status_filter: df = df[df['Status'].isin(status_filter)]
 
-    # --- INTELLIGENT SORTING ---
     today = date.today()
     def get_priority(row):
         status = row.get('Status', '')
@@ -195,15 +188,12 @@ def show_live_leads_list(users_df):
         df['Priority'] = df.apply(get_priority, axis=1)
         df = df.sort_values(by='Priority', ascending=True)
 
-    if df.empty:
-        st.info("📭 No leads found.")
-        return
+    if df.empty: st.info("📭 No leads found."); return
 
     st.caption(f"⚡ Live: {len(df)} Leads")
     status_opts = ["Naya Lead", "Call Uthaya Nahi / Busy", "Baat Hui - Interested", "Site Visit Scheduled", "Visit Done - Soch Raha Hai", "Faltu / Agent / Spam", "Not Interested (Mehenga Hai)", "Sold (Plot Bik Gaya)"]
     all_telecallers = users_df['Username'].tolist()
 
-    # --- PIPELINE ACTION LOGIC (RESTORED) ---
     def get_pipeline_action(status):
         if "Naya" in status: return ("⚡ ACTION: Abhi Call Karein", "blue")
         if "Busy" in status: return ("⏰ ACTION: 4 Ghante baad try karein", "orange")
@@ -227,32 +217,22 @@ def show_live_leads_list(users_df):
         elif "Naya" in status: icon = "⚡"
         
         alert = "🔔 CALL DUE | " if row.get('Priority') == 1 else ""
-        
-        # Get Action Text
         action_text, action_color = get_pipeline_action(status)
 
         with st.expander(f"{icon} {alert}{name}"):
-            
-            # --- ACTION BOX (RESTORED) ---
             if action_color == "blue": st.info(action_text)
             elif action_color == "green": st.success(action_text)
             elif action_color == "orange": st.warning(action_text)
             elif action_color == "red": st.error(action_text)
             else: st.info(action_text)
             
-            # --- ROW 1: BIG BUTTONS ---
             b1, b2 = st.columns(2)
             with b1: st.markdown(big_call_btn(phone), unsafe_allow_html=True)
             with b2: st.markdown(big_wa_btn(phone, name), unsafe_allow_html=True)
-            
             st.write("") 
-
-            # --- ROW 2: DETAILS ---
             st.markdown(f"**📞 {phone}** | 📌 {row.get('Source', '-')}")
-            if st.session_state['role'] == "Manager":
-                st.caption(f"Assigned: {assigned_to}")
+            if st.session_state['role'] == "Manager": st.caption(f"Assigned: {assigned_to}")
 
-            # --- ROW 3: UPDATE FORM ---
             with st.form(f"u_{i}"):
                 c_u1, c_u2 = st.columns(2)
                 ns = c_u1.selectbox("Status", status_opts, key=f"s_{i}", index=status_opts.index(status) if status in status_opts else 0)
@@ -353,6 +333,7 @@ def show_admin(users_df):
     show_feedback()
     c1, c2 = st.columns([1,2])
     with c1:
+        st.subheader("Create User")
         with st.form("nu", clear_on_submit=True):
             u = st.text_input("User"); p = st.text_input("Pass", type="password")
             n = st.text_input("Name"); r = st.selectbox("Role", ["Telecaller", "Sales Specialist", "Manager"])
@@ -361,7 +342,47 @@ def show_admin(users_df):
                 else: 
                     users_sheet.append_row([u, hash_pass(p), r, n])
                     set_feedback(f"✅ Created {u}"); st.rerun()
+        
+        st.divider()
+        st.subheader("📥 Bulk Upload (Speed Mode)")
+        st.caption("Upload CSV. Columns: Name, Phone. (No Header needed, will guess).")
+        uploaded_file = st.file_uploader("Choose CSV", type=['csv'])
+        if uploaded_file is not None:
+            if st.button("Start Fast Upload"):
+                try:
+                    df_up = pd.read_csv(uploaded_file)
+                    # Smart Column Detection
+                    name_col = next((c for c in df_up.columns if "name" in c.lower()), df_up.columns[0])
+                    phone_col = next((c for c in df_up.columns if "phone" in c.lower() or "mobile" in c.lower()), df_up.columns[1])
+                    
+                    # Fetch existing phones ONCE (Fast)
+                    all_phones = set(leads_sheet.col_values(4))
+                    
+                    rows_to_add = []
+                    ts = datetime.now().strftime("%Y-%m-%d %H:%M")
+                    
+                    for idx, row in df_up.iterrows():
+                        p_raw = str(row[phone_col]).replace(".0","").strip()
+                        if p_raw not in all_phones:
+                            # Batch prepare rows
+                            # [ID, Time, Name, Phone, Source, Agent, Assigned, Status, ..., ..., LastCall, ..., ..., ..., ..., FollowUp]
+                            # Make sure this length matches your headers or just is long enough
+                            new_row = ["L-Bulk", ts, row[name_col], p_raw, "Bulk Upload", "", st.session_state['username'], "Naya Lead", "", ts, "", "", "", "", ""]
+                            rows_to_add.append(new_row)
+                            all_phones.add(p_raw) # Prevent duplicates inside the CSV itself
+                    
+                    if rows_to_add:
+                        leads_sheet.append_rows(rows_to_add) # ONE API CALL
+                        set_feedback(f"✅ FAST UPLOAD: Added {len(rows_to_add)} leads instantly!")
+                    else:
+                        st.warning("No new leads found (all duplicates).")
+                    
+                    time.sleep(2)
+                    st.rerun()
+                except Exception as e: st.error(f"Error: {e}")
+
     with c2:
+        st.subheader("Team List")
         st.dataframe(users_df[['Name','Username','Role']], hide_index=True)
         opts = [x for x in users_df['Username'].unique() if x != st.session_state['username']]
         if opts:
