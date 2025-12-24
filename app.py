@@ -187,11 +187,8 @@ def show_live_leads_list(users_df, search_q, status_f):
     try: data = leads_sheet.get_all_records(); df = pd.DataFrame(data)
     except: return
 
-    # --- CRASH FIX: Force all headers to string before cleaning ---
     df.columns = df.columns.astype(str).str.strip()
 
-    # --- SMART ASSIGN COLUMN FINDER ---
-    # Finds "Assigned", "Assigned To", "Assigned TC Email" etc.
     assign_col_name = next((c for c in df.columns if "assign" in c.lower()), None)
 
     if st.session_state['role'] == "Telecaller":
@@ -207,7 +204,6 @@ def show_live_leads_list(users_df, search_q, status_f):
     
     def get_priority_data(row):
         status = row.get('Status', '')
-        # Robust Followup Check
         f_col = next((c for c in df.columns if "Follow" in c), None)
         f_date_str = str(row.get(f_col, '')).strip() if f_col else ""
         
@@ -307,7 +303,6 @@ def show_live_leads_list(users_df, search_q, status_f):
                 st.write("")
                 if st.form_submit_button("✅ UPDATE LEAD", type="primary", use_container_width=True):
                     try:
-                        # OPTIMIZED UPDATE: Find row first, then write
                         cell = leads_sheet.find(phone)
                         if not cell:
                             st.error("❌ Lead not found")
@@ -315,7 +310,6 @@ def show_live_leads_list(users_df, search_q, status_f):
                             r = cell.row
                             h = leads_sheet.row_values(1)
                             
-                            # Helper to find col index safely
                             def get_col(name):
                                 try: return next(i for i,v in enumerate(h) if name.lower() in v.lower()) + 1
                                 except: return None
@@ -367,15 +361,21 @@ def show_add_lead_form(users_df):
             else:
                 try:
                     all_phones = leads_sheet.col_values(4)
-                    if phone in all_phones: st.error(f"⚠️ Phone {phone} exists!"); return
-                except: pass
-                
-                ts = datetime.now().strftime("%Y-%m-%d %H:%M")
-                new_id = generate_lead_id()
-                row_data = [new_id, ts, name, phone, src, ag, assign, "Naya Lead", "", ts, "", "", "", "", ""] 
-                leads_sheet.append_row(row_data)
-                set_feedback(f"✅ Saved {name}")
-                st.rerun()
+                    # --- STRICT DUPLICATE CHECK ---
+                    # Normalize existing phones to last 10 digits
+                    clean_existing = {re.sub(r'\D', '', str(p))[-10:] for p in all_phones}
+                    clean_new = re.sub(r'\D', '', phone)[-10:]
+                    
+                    if clean_new in clean_existing:
+                        st.error(f"⚠️ Duplicate! {phone} already exists.")
+                    else:
+                        ts = datetime.now().strftime("%Y-%m-%d %H:%M")
+                        new_id = generate_lead_id()
+                        row_data = [new_id, ts, name, phone, src, ag, assign, "Naya Lead", "", ts, "", "", "", "", ""] 
+                        leads_sheet.append_row(row_data)
+                        set_feedback(f"✅ Saved {name}")
+                        st.rerun()
+                except Exception as e: st.error(f"Err: {e}")
 
 def show_master_insights():
     st.header("📊 Analytics")
@@ -385,7 +385,6 @@ def show_master_insights():
         return
     if df.empty: st.info("No data"); return
 
-    # CRASH FIX: Cast columns to string
     df.columns = df.columns.astype(str).str.strip()
 
     st.subheader("1️⃣ Business Pulse")
@@ -420,7 +419,7 @@ def show_master_insights():
             })
         if stats: st.dataframe(pd.DataFrame(stats), use_container_width=True, hide_index=True)
         else: st.info("No activity yet.")
-    else: st.error(f"⚠️ 'Assigned' column not detected. Please name a column 'Assigned To' in Sheet.")
+    else: st.error(f"⚠️ System Error: Could not find 'Assigned' column.")
 
 def show_admin(users_df):
     st.header("⚙️ Admin")
@@ -470,7 +469,14 @@ def show_admin(users_df):
                     name_col = df_up.columns[name_idx]
                     phone_col = df_up.columns[phone_idx]
                     
-                    all_phones = set(leads_sheet.col_values(4))
+                    # --- STRICT DEDUPLICATION (LOAD ALL) ---
+                    raw_existing = leads_sheet.col_values(4)
+                    existing_phones_set = set()
+                    for p in raw_existing:
+                        # Store last 10 digits only
+                        p_clean = re.sub(r'\D', '', str(p))
+                        if len(p_clean) >= 10: existing_phones_set.add(p_clean[-10:])
+                    
                     rows_to_add = []
                     ts = datetime.now().strftime("%Y-%m-%d %H:%M")
                     
@@ -478,16 +484,17 @@ def show_admin(users_df):
                     
                     for idx, row in df_up.iterrows():
                         p_raw = str(row[phone_col])
-                        p_clean = re.sub(r'\D', '', p_raw)
+                        p_clean_full = re.sub(r'\D', '', p_raw)
                         
-                        is_duplicate = p_clean in all_phones
-                        if len(p_clean) >= 10 and not is_duplicate:
-                            new_id = generate_lead_id()
-                            assigned_person = next(agent_cycle)
-                            new_row = [new_id, ts, row[name_col], p_clean, "Meta Ads", "", assigned_person, "Naya Lead", "", ts, "", "", "", "", ""]
-                            rows_to_add.append(new_row)
-                            all_phones.add(p_clean)
-                            time.sleep(0.01)
+                        # Check validity and uniqueness on last 10 digits
+                        if len(p_clean_full) >= 10:
+                            p_last_10 = p_clean_full[-10:]
+                            if p_last_10 not in existing_phones_set:
+                                new_id = generate_lead_id()
+                                assigned_person = next(agent_cycle)
+                                new_row = [new_id, ts, row[name_col], p_clean_full, "Meta Ads", "", assigned_person, "Naya Lead", "", ts, "", "", "", "", ""]
+                                rows_to_add.append(new_row)
+                                existing_phones_set.add(p_last_10) # Add to local set to prevent dupes within same CSV
                     
                     if rows_to_add:
                         leads_sheet.append_rows(rows_to_add)
