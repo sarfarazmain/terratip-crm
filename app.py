@@ -22,6 +22,8 @@ custom_css = """
         [data-testid="stElementToolbar"] {display: none;}
         [data-testid="stDecoration"] {display: none;}
         
+        .block-container { padding-top: 1rem !important; }
+
         .streamlit-expanderHeader {
             font-size: 18px !important;
             font-weight: bold !important;
@@ -32,10 +34,7 @@ custom_css = """
             margin-bottom: 8px !important;
         }
         
-        [data-testid="stExpander"] {
-            border: None !important;
-            box-shadow: None !important;
-        }
+        [data-testid="stExpander"] { border: None !important; box-shadow: None !important; }
         
         .big-btn {
             display: block;
@@ -73,17 +72,9 @@ def show_feedback():
     if 'feedback_msg' in st.session_state and st.session_state['feedback_msg']:
         msg = st.session_state['feedback_msg']
         typ = st.session_state.get('feedback_type', 'success')
-        
-        if typ == "success": 
-            st.toast(msg, icon="✅")
-            st.success(msg, icon="✅")
-        elif typ == "error": 
-            st.toast(msg, icon="❌")
-            st.error(msg, icon="❌")
-        elif typ == "warning": 
-            st.toast(msg, icon="⚠️")
-            st.warning(msg, icon="⚠️")
-            
+        if typ == "success": st.toast(msg, icon="✅"); st.success(msg, icon="✅")
+        elif typ == "error": st.toast(msg, icon="❌"); st.error(msg, icon="❌")
+        elif typ == "warning": st.toast(msg, icon="⚠️"); st.warning(msg, icon="⚠️")
         st.session_state['feedback_msg'] = None
 
 # --- DATABASE ---
@@ -115,7 +106,6 @@ def init_auth_system(sh):
     return ws
 
 def robust_update(sheet, phone_number, col_index, value):
-    # This is the legacy function, kept for simple single updates
     try:
         cell = sheet.find(phone_number)
         if cell:
@@ -123,6 +113,12 @@ def robust_update(sheet, phone_number, col_index, value):
             return True, "Updated"
         return False, "Lead not found"
     except Exception as e: return False, str(e)
+
+def get_row_index(sheet, phone_number):
+    try:
+        cell = sheet.find(phone_number)
+        return cell.row if cell else None
+    except: return None
 
 def generate_lead_id(prefix="L"):
     ts = str(int(time.time()))[-6:] 
@@ -185,21 +181,24 @@ st.divider()
 def big_call_btn(num): return f"""<a href="tel:{num}" class="big-btn call-btn">📞 CALL NOW</a>"""
 def big_wa_btn(num, name): return f"""<a href="https://wa.me/91{num}?text=Namaste {name}" class="big-btn wa-btn" target="_blank">💬 WHATSAPP</a>"""
 
-# --- LIVE FEED (OPTIMIZED REFRESH 30s) ---
+# --- LIVE FEED (FRAGMENT) ---
 @st.fragment(run_every=30)
 def show_live_leads_list(users_df, search_q, status_f):
     try: data = leads_sheet.get_all_records(); df = pd.DataFrame(data)
     except: return
 
-    df.columns = df.columns.str.strip() # Clean headers
+    # --- CRASH FIX: Force all headers to string before cleaning ---
+    df.columns = df.columns.astype(str).str.strip()
 
-    # Filter Logic
+    # --- SMART ASSIGN COLUMN FINDER ---
+    # Finds "Assigned", "Assigned To", "Assigned TC Email" etc.
+    assign_col_name = next((c for c in df.columns if "assign" in c.lower()), None)
+
     if st.session_state['role'] == "Telecaller":
-        c_match = [c for c in df.columns if "Assign" in c] 
-        if c_match:
-            df = df[(df[c_match[0]] == st.session_state['username']) | 
-                    (df[c_match[0]] == st.session_state['name']) |
-                    (df[c_match[0]] == "TC1")]
+        if assign_col_name:
+            df = df[(df[assign_col_name] == st.session_state['username']) | 
+                    (df[assign_col_name] == st.session_state['name']) |
+                    (df[assign_col_name] == "TC1")]
 
     if search_q: df = df[df.astype(str).apply(lambda x: x.str.contains(search_q, case=False)).any(axis=1)]
     if status_f: df = df[df['Status'].isin(status_f)]
@@ -208,7 +207,10 @@ def show_live_leads_list(users_df, search_q, status_f):
     
     def get_priority_data(row):
         status = row.get('Status', '')
-        f_date_str = str(row.get('Next Followup', '')).strip() 
+        # Robust Followup Check
+        f_col = next((c for c in df.columns if "Follow" in c), None)
+        f_date_str = str(row.get(f_col, '')).strip() if f_col else ""
+        
         priority = 2
         alert_msg = ""
         
@@ -223,8 +225,6 @@ def show_live_leads_list(users_df, search_q, status_f):
         return priority, alert_msg
 
     if not df.empty:
-        f_col = next((c for c in df.columns if "Follow" in c), None)
-        if f_col: df['Next Followup'] = df[f_col]
         df[['Priority', 'Alert']] = df.apply(lambda row: pd.Series(get_priority_data(row)), axis=1)
         df = df.sort_values(by='Priority', ascending=True)
 
@@ -255,8 +255,7 @@ def show_live_leads_list(users_df, search_q, status_f):
         name = row.get('Client Name', 'Unknown')
         status = row.get('Status', 'Naya Lead')
         phone = str(row.get('Phone', '')).replace(',', '').replace('.', '')
-        assign_col_name = next((c for c in df.columns if "Assign" in c), 'Assigned')
-        assigned_to = row.get(assign_col_name, '-')
+        assigned_to = row.get(assign_col_name, '-') if assign_col_name else '-'
         
         icon = "⚪"
         if "Closed" in status: icon = "🟢"
@@ -308,54 +307,45 @@ def show_live_leads_list(users_df, search_q, status_f):
                 st.write("")
                 if st.form_submit_button("✅ UPDATE LEAD", type="primary", use_container_width=True):
                     try:
-                        # --- OPTIMIZED UPDATE LOGIC (SAVE API QUOTA) ---
-                        # 1. Find Row ONCE
+                        # OPTIMIZED UPDATE: Find row first, then write
                         cell = leads_sheet.find(phone)
                         if not cell:
-                            st.error("❌ Lead not found (Deleted?)")
+                            st.error("❌ Lead not found")
                         else:
                             r = cell.row
                             h = leads_sheet.row_values(1)
                             
-                            # Map Columns
+                            # Helper to find col index safely
                             def get_col(name):
-                                try: return next(i for i,v in enumerate(h) if name in v) + 1
+                                try: return next(i for i,v in enumerate(h) if name.lower() in v.lower()) + 1
                                 except: return None
                             
                             updates = []
-                            # Status Update
                             s_idx = get_col("Status") or 8
                             updates.append({'range': gspread.utils.rowcol_to_a1(r, s_idx), 'values': [[ns]]})
                             
-                            # Note Update
                             n_idx = get_col("Notes") or 12
                             if note: updates.append({'range': gspread.utils.rowcol_to_a1(r, n_idx), 'values': [[note]]})
                             
-                            # Date Update
                             f_idx = get_col("Follow") or 15
                             if final_date: updates.append({'range': gspread.utils.rowcol_to_a1(r, f_idx), 'values': [[str(final_date)]]})
                             
-                            # Last Call Time Update
                             t_idx = get_col("Last Call") or 10
                             updates.append({'range': gspread.utils.rowcol_to_a1(r, t_idx), 'values': [[datetime.now().strftime("%Y-%m-%d %H:%M")]]})
                             
-                            # Re-Assign Update
                             if new_assign and new_assign != assigned_to:
                                 a_idx = get_col("Assign") or 7
                                 updates.append({'range': gspread.utils.rowcol_to_a1(r, a_idx), 'values': [[new_assign]]})
                             
-                            # Call Count Increment
                             c_idx = get_col("Count")
                             if c_idx:
                                 curr = leads_sheet.cell(r, c_idx).value
                                 val = int(curr) + 1 if curr and curr.isdigit() else 1
                                 updates.append({'range': gspread.utils.rowcol_to_a1(r, c_idx), 'values': [[val]]})
 
-                            # EXECUTE BATCH UPDATE (Saves Quota!)
                             leads_sheet.batch_update(updates)
-                            
                             set_feedback(f"✅ Updated {name}")
-                            time.sleep(1) # Safety pause
+                            time.sleep(1)
                             st.rerun()
                     except Exception as e: st.error(f"Err: {e}")
 
@@ -382,7 +372,6 @@ def show_add_lead_form(users_df):
                 
                 ts = datetime.now().strftime("%Y-%m-%d %H:%M")
                 new_id = generate_lead_id()
-                # Ensure row has enough empty strings for all potential columns
                 row_data = [new_id, ts, name, phone, src, ag, assign, "Naya Lead", "", ts, "", "", "", "", ""] 
                 leads_sheet.append_row(row_data)
                 set_feedback(f"✅ Saved {name}")
@@ -396,7 +385,8 @@ def show_master_insights():
         return
     if df.empty: st.info("No data"); return
 
-    df.columns = df.columns.str.strip()
+    # CRASH FIX: Cast columns to string
+    df.columns = df.columns.astype(str).str.strip()
 
     st.subheader("1️⃣ Business Pulse")
     tot = len(df); sold = len(df[df['Status'].str.contains("Closed", na=False)])
@@ -405,7 +395,7 @@ def show_master_insights():
     m1.metric("Total", tot); m2.metric("Sold", sold); m3.metric("Junk", junk)
     
     st.subheader("2️⃣ Team Activity")
-    assign_col = next((c for c in df.columns if "Assign" in c), None)
+    assign_col = next((c for c in df.columns if "assign" in c.lower()), None)
     
     if assign_col:
         stats = []
@@ -430,7 +420,7 @@ def show_master_insights():
             })
         if stats: st.dataframe(pd.DataFrame(stats), use_container_width=True, hide_index=True)
         else: st.info("No activity yet.")
-    else: st.error(f"⚠️ System Error: Could not find 'Assigned' column.")
+    else: st.error(f"⚠️ 'Assigned' column not detected. Please name a column 'Assigned To' in Sheet.")
 
 def show_admin(users_df):
     st.header("⚙️ Admin")
