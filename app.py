@@ -13,7 +13,7 @@ import pytz
 # --- CONFIGURATION ---
 st.set_page_config(page_title="TerraTip CRM", layout="wide", page_icon="🏡")
 
-# --- CUSTOM CSS (THE REAL FIX) ---
+# --- CUSTOM CSS (THE FLOAT FIX) ---
 custom_css = """
     <style>
         header {visibility: hidden;}
@@ -28,26 +28,24 @@ custom_css = """
             background-color: #262730 !important;
             border: 1px solid #444 !important;
             border-radius: 8px !important;
-            padding: 12px 15px !important;
+            padding: 10px 14px !important;
             margin-bottom: 6px !important;
             color: #eee !important;
             font-family: 'Roboto', sans-serif;
             font-size: 15px !important;
         }
         
-        /* FLEXBOX LAYOUT - The Key to Right Alignment */
-        /* This targets the paragraph <p> inside the header */
+        /* Ensure the paragraph takes full width */
         .streamlit-expanderHeader p {
-            display: flex !important;
-            align-items: center;
             width: 100%;
             margin: 0;
+            display: block; /* Block display allows floating */
         }
 
-        /* 1. BADGE (Targets **Bold Text**) - Fixed Left */
+        /* 1. BADGE (Bold Text) */
         .streamlit-expanderHeader strong {
             display: inline-block;
-            min-width: 80px; /* Fixed width prevents dancing alignment */
+            min-width: 80px;
             text-align: center;
             background: #333;
             color: #fff;
@@ -56,11 +54,11 @@ custom_css = """
             font-weight: 700;
             font-size: 12px;
             margin-right: 10px;
-            white-space: nowrap;
             border: 1px solid #555;
+            vertical-align: middle;
         }
 
-        /* 2. TAGS (Targets `Code Text`) - Grey Pill */
+        /* 2. TAGS (Code Text) */
         .streamlit-expanderHeader code {
             font-family: sans-serif;
             font-size: 11px;
@@ -70,16 +68,19 @@ custom_css = """
             border-radius: 3px;
             margin-left: 6px;
             border: none;
+            vertical-align: middle;
         }
 
-        /* 3. TIME (Targets *Italic Text*) - FORCED RIGHT ALIGN */
+        /* 3. TIME (Italic Text) - THE FLOAT RIGHT FIX */
         .streamlit-expanderHeader em {
+            float: right; /* <--- THIS IS THE KEY */
             font-style: normal;
-            font-size: 11px;
-            color: #888;
-            margin-left: auto; /* THIS PUSHES IT TO THE RIGHT */
-            padding-left: 10px;
-            white-space: nowrap;
+            font-size: 12px;
+            color: #aaa;
+            background: #1e1e1e; /* Slight background for contrast */
+            padding: 2px 6px;
+            border-radius: 4px;
+            margin-top: 2px; /* Slight alignment tweak */
         }
 
         /* ACTION BUTTONS */
