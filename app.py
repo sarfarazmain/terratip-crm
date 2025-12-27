@@ -32,21 +32,8 @@ custom_css = """
             border: 1px solid #444 !important;
             border-radius: 8px !important;
             margin-bottom: 8px !important;
-            display: flex;
-            align-items: center;
         }
         
-        /* TIME BADGE STYLE */
-        .time-badge {
-            font-size: 12px;
-            background: #333;
-            color: #aaa;
-            padding: 2px 6px;
-            border-radius: 4px;
-            margin-left: 8px;
-            font-weight: normal;
-        }
-
         [data-testid="stExpander"] { border: None !important; box-shadow: None !important; }
         
         .big-btn {
@@ -155,7 +142,7 @@ def generate_lead_id(prefix="L"):
 
 # --- HELPER: CALCULATE 'AGO' TIME ---
 def get_time_ago(last_call_str):
-    if not last_call_str or len(str(last_call_str)) < 5: return "Never"
+    if not last_call_str or len(str(last_call_str)) < 5: return "New"
     try:
         # Try format 1: YYYY-MM-DD HH:MM
         last_dt = datetime.strptime(str(last_call_str).strip(), "%Y-%m-%d %H:%M")
@@ -256,18 +243,11 @@ def show_live_leads_list(users_df, search_q, status_f):
 
     today = get_ist_date()
     
-    # --- LOGIC UPGRADE: SMART SORTING ---
+    # --- SMART SORTING ---
     def get_sort_key(row):
         status = str(row.get('Status', '')).lower()
         f_col = next((c for c in df.columns if "Follow" in c), None)
         f_date_str = str(row.get(f_col, '')).strip() if f_col else ""
-        
-        # Priority Score (Lower = Higher Priority)
-        # 0 = Naya (Fresh)
-        # 1 = Overdue
-        # 2 = Today
-        # 3 = Future
-        # 4 = Passive
         
         score = 4 
         sort_date = date.max
@@ -285,18 +265,15 @@ def show_live_leads_list(users_df, search_q, status_f):
             
         return score, sort_date
 
-    # --- ALERT LOGIC ---
     def get_alert_label(score, sort_date):
         if score == 0: return "⚡ NEW"
-        if score == 1: return f"🔴 LATE ({sort_date.strftime('%d-%b')})"
+        if score == 1: return f"🔴 LATE"
         if score == 2: return "🟡 TODAY"
         if score == 3: return f"🟢 {sort_date.strftime('%d-%b')}"
         return ""
 
     if not df.empty:
-        # Create sorting column
         df['SortData'] = df.apply(lambda row: get_sort_key(row), axis=1)
-        # Sort by Score (ASC), then by Date (ASC)
         df = df.sort_values(by=['SortData'], key=lambda x: x.map(lambda v: (v[0], v[1])), ascending=True)
 
     if df.empty: st.info("📭 No leads found."); return
@@ -343,6 +320,7 @@ def show_live_leads_list(users_df, search_q, status_f):
         if "visit done" in s or "negotiat" in s: return ("💰 ACTION: Close Deal", "blue")
         if "closed" in s or "booked" in s: return ("🎉 ACTION: Party!", "green")
         if "junk" in s: return ("🗑️ ACTION: Ignore", "red")
+        if "not" in s: return ("📉 ACTION: Ask for Referrals", "grey")
         return ("❓ ACTION: Update", "grey")
 
     for i, row in df.iterrows():
@@ -354,12 +332,10 @@ def show_live_leads_list(users_df, search_q, status_f):
         f_col_name = next((c for c in df.columns if "Follow" in c), None)
         f_val = row.get(f_col_name, '') if f_col_name else ''
         
-        # Last Action Calculation
         t_col_name = next((c for c in df.columns if "Last Call" in c), None)
         t_val = row.get(t_col_name, '') if t_col_name else ''
         last_action_badge = get_time_ago(t_val)
         
-        # Sorting Data for Display
         sort_data = row['SortData']
         alert_text = get_alert_label(sort_data[0], sort_data[1])
 
@@ -372,14 +348,10 @@ def show_live_leads_list(users_df, search_q, status_f):
         
         action_text, action_color = get_pipeline_action(status, str(f_val).strip())
 
-        # HEADER WITH LAST ACTION BADGE
-        header_html = f"{icon} {alert_text} {name} <span class='time-badge'>🕒 {last_action_badge}</span>"
+        # FIX: USE CORRECT LABEL TEXT HERE
+        label_text = f"{icon} {alert_text} {name} | 🕒 {last_action_badge}"
         
-        with st.expander(label=f"dummy_{i}", expanded=False):
-            # Custom Header Injection hack removed for stability, using standard label
-            st.markdown(f"### {icon} {alert_text} **{name}**")
-            st.markdown(f"🕒 Last Activity: **{last_action_badge}**")
-            
+        with st.expander(label=label_text, expanded=False):
             if action_color == "blue": st.info(action_text)
             elif action_color == "green": st.success(action_text)
             elif action_color == "orange": st.warning(action_text)
