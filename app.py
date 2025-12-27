@@ -23,16 +23,30 @@ custom_css = """
         
         .block-container { padding-top: 1rem !important; }
 
+        /* HEADER STYLING */
         .streamlit-expanderHeader {
-            font-size: 18px !important;
-            font-weight: bold !important;
-            padding: 20px !important; 
+            font-size: 16px !important;
+            font-weight: 600 !important;
+            padding: 16px 20px !important; 
             background-color: #262730 !important;
             border: 1px solid #444 !important;
-            border-radius: 10px !important;
+            border-radius: 8px !important;
             margin-bottom: 8px !important;
+            display: flex;
+            align-items: center;
         }
         
+        /* TIME BADGE STYLE */
+        .time-badge {
+            font-size: 12px;
+            background: #333;
+            color: #aaa;
+            padding: 2px 6px;
+            border-radius: 4px;
+            margin-left: 8px;
+            font-weight: normal;
+        }
+
         [data-testid="stExpander"] { border: None !important; box-shadow: None !important; }
         
         .big-btn {
@@ -139,6 +153,32 @@ def generate_lead_id(prefix="L"):
     rand = str(random.randint(10, 99))
     return f"{prefix}-{ts}{rand}"
 
+# --- HELPER: CALCULATE 'AGO' TIME ---
+def get_time_ago(last_call_str):
+    if not last_call_str or len(str(last_call_str)) < 5: return "Never"
+    try:
+        # Try format 1: YYYY-MM-DD HH:MM
+        last_dt = datetime.strptime(str(last_call_str).strip(), "%Y-%m-%d %H:%M")
+    except:
+        try:
+            # Try format 2: YYYY-MM-DD (Fallback)
+            last_dt = datetime.strptime(str(last_call_str).strip(), "%Y-%m-%d")
+        except: return "-"
+    
+    # Make timezone aware if naive
+    if last_dt.tzinfo is None:
+        last_dt = IST.localize(last_dt)
+        
+    now = datetime.now(IST)
+    diff = now - last_dt
+    
+    if diff.days == 0:
+        hrs = diff.seconds // 3600
+        if hrs == 0: return "Just now"
+        return f"{hrs}h ago"
+    elif diff.days == 1: return "Yesterday"
+    else: return f"{diff.days}d ago"
+
 # --- INITIALIZATION ---
 try:
     sh = connect_db()
@@ -216,31 +256,52 @@ def show_live_leads_list(users_df, search_q, status_f):
 
     today = get_ist_date()
     
-    def get_priority_data(row):
-        status = row.get('Status', '')
+    # --- LOGIC UPGRADE: SMART SORTING ---
+    def get_sort_key(row):
+        status = str(row.get('Status', '')).lower()
         f_col = next((c for c in df.columns if "Follow" in c), None)
         f_date_str = str(row.get(f_col, '')).strip() if f_col else ""
         
-        priority = 2
-        alert_msg = ""
+        # Priority Score (Lower = Higher Priority)
+        # 0 = Naya (Fresh)
+        # 1 = Overdue
+        # 2 = Today
+        # 3 = Future
+        # 4 = Passive
         
-        if "Naya" in status: priority = 0; alert_msg = "⚡ NEW"
-        elif "Negotiation" in status: priority = 0; alert_msg = "💰 CLOSING"
+        score = 4 
+        sort_date = date.max
+        
+        if "naya" in status or "new" in status:
+            score = 0
         elif f_date_str and len(f_date_str) > 5:
             try:
                 f_date = datetime.strptime(f_date_str, "%Y-%m-%d").date()
-                if f_date < today: priority = 0; alert_msg = "🔴 LATE"
-                elif f_date == today: priority = 1; alert_msg = "🟡 TODAY"
+                sort_date = f_date
+                if f_date < today: score = 1 # Overdue
+                elif f_date == today: score = 2 # Today
+                else: score = 3 # Future
             except: pass
-        return priority, alert_msg
+            
+        return score, sort_date
+
+    # --- ALERT LOGIC ---
+    def get_alert_label(score, sort_date):
+        if score == 0: return "⚡ NEW"
+        if score == 1: return f"🔴 LATE ({sort_date.strftime('%d-%b')})"
+        if score == 2: return "🟡 TODAY"
+        if score == 3: return f"🟢 {sort_date.strftime('%d-%b')}"
+        return ""
 
     if not df.empty:
-        df[['Priority', 'Alert']] = df.apply(lambda row: pd.Series(get_priority_data(row)), axis=1)
-        df = df.sort_values(by='Priority', ascending=True)
+        # Create sorting column
+        df['SortData'] = df.apply(lambda row: get_sort_key(row), axis=1)
+        # Sort by Score (ASC), then by Date (ASC)
+        df = df.sort_values(by=['SortData'], key=lambda x: x.map(lambda v: (v[0], v[1])), ascending=True)
 
     if df.empty: st.info("📭 No leads found."); return
 
-    st.caption(f"⚡ Live: {len(df)} Leads (IST Time: {get_ist_time()})")
+    st.caption(f"⚡ Live: {len(df)} Leads (Sorted by Priority)")
     
     status_opts = [
         "Naya Lead", "Ringing / Busy / No Answer", "Asked to Call Later", 
@@ -293,13 +354,14 @@ def show_live_leads_list(users_df, search_q, status_f):
         f_col_name = next((c for c in df.columns if "Follow" in c), None)
         f_val = row.get(f_col_name, '') if f_col_name else ''
         
-        # --- DATE FORMATTER FOR HEADER ---
-        date_badge = ""
-        if f_val and len(str(f_val)) > 5:
-            try:
-                d_obj = datetime.strptime(str(f_val), "%Y-%m-%d")
-                date_badge = f" | 🗓️ {d_obj.strftime('%d-%b')}"
-            except: pass
+        # Last Action Calculation
+        t_col_name = next((c for c in df.columns if "Last Call" in c), None)
+        t_val = row.get(t_col_name, '') if t_col_name else ''
+        last_action_badge = get_time_ago(t_val)
+        
+        # Sorting Data for Display
+        sort_data = row['SortData']
+        alert_text = get_alert_label(sort_data[0], sort_data[1])
 
         icon = "⚪"
         if "Closed" in status: icon = "🟢"
@@ -308,11 +370,16 @@ def show_live_leads_list(users_df, search_q, status_f):
         elif "Naya" in status: icon = "⚡"
         elif "Negotiation" in status: icon = "💰"
         
-        alert_text = row.get('Alert', '')
         action_text, action_color = get_pipeline_action(status, str(f_val).strip())
 
-        # HEADER NOW INCLUDES DATE BADGE
-        with st.expander(f"{icon} {alert_text} {name} {date_badge}"):
+        # HEADER WITH LAST ACTION BADGE
+        header_html = f"{icon} {alert_text} {name} <span class='time-badge'>🕒 {last_action_badge}</span>"
+        
+        with st.expander(label=f"dummy_{i}", expanded=False):
+            # Custom Header Injection hack removed for stability, using standard label
+            st.markdown(f"### {icon} {alert_text} **{name}**")
+            st.markdown(f"🕒 Last Activity: **{last_action_badge}**")
+            
             if action_color == "blue": st.info(action_text)
             elif action_color == "green": st.success(action_text)
             elif action_color == "orange": st.warning(action_text)
@@ -338,13 +405,9 @@ def show_live_leads_list(users_df, search_q, status_f):
             c_u1, c_u2 = st.columns(2)
             new_note = c_u1.text_input("Add New Note", key=f"n_{i}", placeholder="Type here...")
             
-            # --- DYNAMIC LABEL LOGIC ---
             date_label = "📅 Follow-up:"
-            if "Visit" in ns or "Scheduled" in ns:
-                date_label = "📍 **Site Visit Date:**"
-            elif "Ringing" in ns:
-                date_label = "⏰ Next Call:"
-                
+            if "Visit" in ns or "Scheduled" in ns: date_label = "📍 **Site Visit Date:**"
+            elif "Ringing" in ns: date_label = "⏰ Next Call:"
             c_u2.write(date_label)
             
             date_option = c_u2.radio("Quick Pick", ["None", "Tom", "3 Days", "Custom"], horizontal=True, key=f"radio_{i}", label_visibility="collapsed")
@@ -352,10 +415,8 @@ def show_live_leads_list(users_df, search_q, status_f):
             final_date = None
             if date_option == "Custom":
                 final_date = c_u2.date_input("Select Date", min_value=today, key=f"cd_{i}")
-            elif date_option == "Tom":
-                final_date = today + timedelta(days=1)
-            elif date_option == "3 Days":
-                final_date = today + timedelta(days=3)
+            elif date_option == "Tom": final_date = today + timedelta(days=1)
+            elif date_option == "3 Days": final_date = today + timedelta(days=3)
             
             new_assign = None
             if st.session_state['role'] == "Manager":
@@ -364,9 +425,7 @@ def show_live_leads_list(users_df, search_q, status_f):
                 new_assign = st.selectbox("Re-Assign:", all_telecallers, index=u_idx, key=f"a_{i}")
 
             st.write("")
-            # --- BUTTON SWAP LOGIC (GREEN FLASH) ---
-            button_ph = st.empty() # Placeholder
-            
+            button_ph = st.empty()
             if button_ph.button("✅ UPDATE LEAD", key=f"btn_{i}", type="primary", use_container_width=True):
                 try:
                     cell = leads_sheet.find(phone)
@@ -407,12 +466,9 @@ def show_live_leads_list(users_df, search_q, status_f):
                             updates.append({'range': gspread.utils.rowcol_to_a1(r, c_idx), 'values': [[val]]})
 
                         leads_sheet.batch_update(updates)
-                        
-                        # --- SUCCESS ANIMATION ---
                         button_ph.success("✅ SAVED SUCCESSFULLY!")
-                        time.sleep(0.7) # Pause to let user see green
+                        time.sleep(0.7)
                         st.rerun()
-                        
                 except Exception as e: st.error(f"Err: {e}")
 
 def show_add_lead_form(users_df):
