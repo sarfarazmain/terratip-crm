@@ -23,21 +23,54 @@ custom_css = """
         
         .block-container { padding-top: 1rem !important; }
 
-        /* PROFESSIONAL HEADER STYLE */
-        .streamlit-expanderHeader {
+        /* PROFESSIONAL SPLIT HEADER STYLE - THE MAGIC SAUCE */
+        .streamlit-expanderHeader p {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            width: 100%;
+            margin: 0;
             font-family: 'Roboto', sans-serif;
             font-size: 16px !important;
             font-weight: 600 !important;
-            color: #ffffff !important;
+        }
+        
+        .streamlit-expanderHeader {
             background-color: #262730 !important;
             border: 1px solid #444 !important;
             border-radius: 8px !important;
             padding: 15px 20px !important;
             margin-bottom: 8px !important;
+            color: #ffffff !important;
         }
         
         [data-testid="stExpander"] { border: None !important; box-shadow: None !important; }
         
+        /* TAG BADGE STYLE */
+        .tag-badge {
+            font-size: 11px;
+            background: #444;
+            color: #fff;
+            padding: 2px 6px;
+            border-radius: 4px;
+            margin-left: 8px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            border: 1px solid #666;
+            vertical-align: middle;
+        }
+
+        /* TIME BADGE RIGHT ALIGNED */
+        .time-badge {
+            font-size: 12px;
+            background: #333;
+            color: #aaa;
+            padding: 4px 8px;
+            border-radius: 4px;
+            font-weight: normal;
+            white-space: nowrap;
+        }
+
         /* ACTION BUTTONS */
         .big-btn {
             display: block;
@@ -55,7 +88,6 @@ custom_css = """
         .call-btn { background-color: #28a745; color: white !important; }
         .wa-btn { background-color: #25D366; color: white !important; }
         
-        /* COMPACT NOTE HISTORY */
         .note-history {
             font-size: 12px;
             color: #bbb;
@@ -68,7 +100,6 @@ custom_css = """
             border-left: 3px solid #555;
         }
         
-        /* FORM LABELS */
         div[role="radiogroup"] > label {
             padding: 5px 10px;
             background: #1e1e1e;
@@ -221,7 +252,7 @@ st.divider()
 def big_call_btn(num): return f"""<a href="tel:{num}" class="big-btn call-btn">📞 CALL NOW</a>"""
 def big_wa_btn(num, name): return f"""<a href="https://wa.me/91{num}?text=Namaste {name}" class="big-btn wa-btn" target="_blank">💬 WHATSAPP</a>"""
 
-# --- LIVE FEED (FRAGMENT) ---
+# --- LIVE FEED ---
 @st.fragment(run_every=30)
 def show_live_leads_list(users_df, search_q, status_f):
     try: data = leads_sheet.get_all_records(); df = pd.DataFrame(data)
@@ -230,6 +261,7 @@ def show_live_leads_list(users_df, search_q, status_f):
     df.columns = df.columns.astype(str).str.strip()
     assign_col_name = next((c for c in df.columns if "assign" in c.lower()), None)
 
+    # --- FILTERING ---
     if st.session_state['role'] == "Telecaller":
         if assign_col_name:
             df = df[(df[assign_col_name] == st.session_state['username']) | 
@@ -241,80 +273,106 @@ def show_live_leads_list(users_df, search_q, status_f):
 
     today = get_ist_date()
     
-    # --- CLEAN SORTING & HEADER LOGIC ---
+    # --- BULK LABELING (MANAGER) ---
+    if st.session_state['role'] == "Manager":
+        with st.expander("🏷️ Bulk Labeling Tool (Manager)", expanded=False):
+            if not df.empty:
+                st.caption("Apply custom labels to filtered leads (e.g. 'Old Meta', 'Event 2024')")
+                df['DisplayLabel'] = df['Client Name'] + " (" + df['Phone'].astype(str) + ")"
+                
+                select_all = st.checkbox("Select All Filtered Leads")
+                if select_all:
+                    selected_leads = df['Phone'].tolist()
+                    st.info(f"✅ {len(selected_leads)} leads selected.")
+                else:
+                    selected_items = st.multiselect("Select Leads:", df['DisplayLabel'])
+                    selected_leads = [x.split("(")[-1].replace(")", "") for x in selected_items]
+                
+                custom_tag = st.text_input("Enter Label Name", placeholder="e.g. Old Meta Lead")
+                
+                if st.button("Apply Label") and custom_tag:
+                    if not selected_leads:
+                        st.error("No leads selected.")
+                    else:
+                        try:
+                            h = leads_sheet.row_values(1)
+                            # FIND TAG COLUMN (Column Q usually)
+                            try: t_idx = next(i for i,v in enumerate(h) if "Tag" in v or "Label" in v) + 1
+                            except: 
+                                st.error("❌ 'Tags' column not found! Please add a column named 'Tags' to your Sheet.")
+                                t_idx = None
+                            
+                            if t_idx:
+                                all_records = leads_sheet.get_all_values()
+                                updates = []
+                                
+                                for lead_phone in selected_leads:
+                                    r_idx = -1
+                                    # Basic loop to find row by phone
+                                    for i, row in enumerate(all_records):
+                                        if str(row[3]) == str(lead_phone) or str(row[3]).replace('.0','') == str(lead_phone):
+                                            r_idx = i + 1
+                                            break
+                                    
+                                    if r_idx != -1:
+                                        updates.append({'range': gspread.utils.rowcol_to_a1(r_idx, t_idx), 'values': [[custom_tag]]})
+                                
+                                if updates:
+                                    leads_sheet.batch_update(updates)
+                                    set_feedback(f"✅ Labeled {len(updates)} leads as '{custom_tag}'!")
+                                    time.sleep(1)
+                                    st.rerun()
+                        except Exception as e: st.error(f"Error: {e}")
+
+    # --- LEAD DATA PREP ---
     def get_lead_meta(row):
         status = str(row.get('Status', '')).strip()
-        
-        # Follow-Up Date Logic
         f_col = next((c for c in df.columns if "Follow" in c), None)
         f_val = str(row.get(f_col, '')).strip() if f_col else ""
-        
-        # Last Active Logic
         t_col = next((c for c in df.columns if "Last Call" in c), None)
         t_val = str(row.get(t_col, '')).strip() if t_col else ""
         ago = get_time_ago(t_val)
         
-        # Determine Priority Score & Header Badge
-        score = 4 # Default
+        # Tag Logic
+        tag_col = next((c for c in df.columns if "Tag" in c or "Label" in c), None)
+        tag_val = str(row.get(tag_col, '')).strip() if tag_col else ""
+        tag_html = f"<span class='tag-badge'>{tag_val}</span>" if tag_val else ""
+        
+        score = 4 
         badge_icon = "⚪"
         badge_text = "PASSIVE"
         
-        # 1. New Lead?
         if "naya" in status.lower() or "new" in status.lower():
-            score = 0
-            badge_icon = "⚡"
-            badge_text = "NEW LEAD"
-        # 2. Site Visit / Closing?
+            score = 0; badge_icon = "⚡"; badge_text = "NEW"
         elif "visit" in status.lower() or "schedule" in status.lower():
-            score = 0
-            badge_icon = "📍"
-            badge_text = "VISIT" # Will append date below
+            score = 0; badge_icon = "📍"; badge_text = "VISIT"
         elif "negotiat" in status.lower():
-            score = 0
-            badge_icon = "💰"
-            badge_text = "CLOSING"
-        # 3. Check Dates
+            score = 0; badge_icon = "💰"; badge_text = "CLOSING"
         elif f_val and len(f_val) > 5:
             try:
                 f_date = datetime.strptime(f_val, "%Y-%m-%d").date()
-                if f_date < today:
-                    score = 1
-                    badge_icon = "🔴"
-                    badge_text = f"LATE ({f_date.strftime('%d-%b')})"
-                elif f_date == today:
-                    score = 2
-                    badge_icon = "🟡"
-                    badge_text = "TODAY"
-                else:
-                    score = 3
-                    badge_icon = "🗓️"
-                    badge_text = f"{f_date.strftime('%d-%b')}"
+                if f_date < today: score = 1; badge_icon = "🔴"; badge_text = f"LATE ({f_date.strftime('%d-%b')})"
+                elif f_date == today: score = 2; badge_icon = "🟡"; badge_text = "TODAY"
+                else: score = 3; badge_icon = "🗓️"; badge_text = f"{f_date.strftime('%d-%b')}"
             except: pass
             
-        # Override Badge Text if Visit and Date Known
         if "VISIT" in badge_text and f_val and len(f_val) > 5:
              try:
                 f_date = datetime.strptime(f_val, "%Y-%m-%d").date()
                 badge_text = f"VISIT: {f_date.strftime('%d-%b')}"
              except: pass
 
-        return score, badge_icon, badge_text, ago, f_val
+        return score, badge_icon, badge_text, ago, f_val, tag_html
 
     if not df.empty:
-        # Apply Logic
-        df[['Score', 'Icon', 'Badge', 'Ago', 'FDate']] = df.apply(lambda row: pd.Series(get_lead_meta(row)), axis=1)
-        # Sort
+        df[['Score', 'Icon', 'Badge', 'Ago', 'FDate', 'TagHtml']] = df.apply(lambda row: pd.Series(get_lead_meta(row)), axis=1)
         df = df.sort_values(by=['Score'], ascending=True)
 
     if df.empty: st.info("📭 No leads found."); return
 
     st.caption(f"⚡ Live: {len(df)} Leads (IST Time: {get_ist_time()})")
     
-    status_opts = [
-        "Naya Lead", "Ringing / Busy / No Answer", "Asked to Call Later", 
-        "Interested (Send Details)", "Site Visit Scheduled", "Visit Done (Negotiation)", 
-        "Sale Closed / Booked", "Not Interested / Price / Location", "Junk / Invalid / Agent"
-    ]
+    status_opts = ["Naya Lead", "Ringing / Busy / No Answer", "Asked to Call Later", "Interested (Send Details)", "Site Visit Scheduled", "Visit Done (Negotiation)", "Sale Closed / Booked", "Not Interested / Price / Location", "Junk / Invalid / Agent"]
     all_telecallers = users_df['Username'].tolist()
 
     def get_smart_index(current_val):
@@ -322,7 +380,6 @@ def show_live_leads_list(users_df, search_q, status_f):
         if val in [x.lower() for x in status_opts]:
             for i, x in enumerate(status_opts):
                 if x.lower() == val: return i
-        # Fallback Keywords
         if "naya" in val: return 0
         if "ring" in val or "busy" in val: return 1
         if "later" in val: return 2
@@ -334,53 +391,83 @@ def show_live_leads_list(users_df, search_q, status_f):
         if "junk" in val: return 8
         return 0
 
+    def get_pipeline_action(status, f_date_str):
+        if f_date_str and len(str(f_date_str)) > 5:
+            try:
+                f_date = datetime.strptime(f_date_str, "%Y-%m-%d").date()
+                if f_date > today: return (f"📅 Scheduled: {f_date.strftime('%d-%b')}", "green")
+                if f_date == today: return ("🟡 ACTION: Call Today!", "orange")
+            except: pass
+        s = status.lower()
+        if "naya" in s: return ("⚡ ACTION: Call Immediately", "blue")
+        if "ring" in s or "busy" in s: return ("⏰ ACTION: Retry in 4 hours", "orange")
+        if "later" in s: return ("📅 ACTION: Set Appointment", "orange")
+        if "interest" in s: return ("💬 ACTION: Send Brochure", "green")
+        if "schedule" in s: return ("📍 ACTION: Confirm Visit", "green")
+        if "visit done" in s or "negotiat" in s: return ("💰 ACTION: Close Deal", "blue")
+        if "closed" in s or "booked" in s: return ("🎉 ACTION: Party!", "green")
+        if "junk" in s: return ("🗑️ ACTION: Ignore", "red")
+        return ("❓ ACTION: Update", "grey")
+
     for i, row in df.iterrows():
         name = row.get('Client Name', 'Unknown')
+        status = str(row.get('Status', 'Naya Lead')).strip()
         phone = str(row.get('Phone', '')).replace(',', '').replace('.', '')
         assigned_to = row.get(assign_col_name, '-') if assign_col_name else '-'
         
-        # Header Construction
-        header_text = f"{row['Icon']} {row['Badge']} | {name} | 🕒 {row['Ago']}"
+        f_col_name = next((c for c in df.columns if "Follow" in c), None)
+        f_val = row.get(f_col_name, '') if f_col_name else ''
+        
+        action_text, action_color = get_pipeline_action(status, str(f_val).strip())
+
+        # --- SPLIT HEADER HTML (Name Left, Time Right) ---
+        header_text = f"<span>{row['Icon']} {row['Badge']} | {name} {row['TagHtml']}</span> <span class='time-badge'>🕒 {row['Ago']}</span>"
         
         with st.expander(label=header_text, expanded=False):
+            if action_color == "blue": st.info(action_text)
+            elif action_color == "green": st.success(action_text)
+            elif action_color == "orange": st.warning(action_text)
+            elif action_color == "red": st.error(action_text)
+            else: st.info(action_text)
             
-            # --- ROW 1: ACTION BUTTONS ---
             b1, b2 = st.columns(2)
             with b1: st.markdown(big_call_btn(phone), unsafe_allow_html=True)
             with b2: st.markdown(big_wa_btn(phone, name), unsafe_allow_html=True)
             
-            # --- ROW 2: STATUS & DETAILS ---
-            c_det1, c_det2 = st.columns([2, 1])
-            with c_det1:
-                st.caption(f"**📞 {phone}** | Source: {row.get('Source', '-')}")
-                st.caption(f"👤 Assigned: {assigned_to}")
-            with c_det2:
-                # Status Dropdown
-                current_status = str(row.get('Status', 'Naya Lead'))
-                ns = st.selectbox("Status", status_opts, key=f"s_{i}", index=get_smart_index(current_status))
+            st.write("")
+            st.markdown(f"**📞 {phone}** | 📌 {row.get('Source', '-')}")
+            if st.session_state['role'] == "Manager": st.caption(f"Assigned: {assigned_to}")
 
-            # --- ROW 3: HISTORY ---
+            st.write("📝 **Status:**")
+            default_idx = get_smart_index(status)
+            ns = st.selectbox("Status", status_opts, key=f"s_{i}", index=default_idx, label_visibility="collapsed")
+            
             existing_notes = str(row.get('Notes', ''))
             if existing_notes and existing_notes != "nan" and len(existing_notes) > 2:
                 st.markdown(f"<div class='note-history'>{existing_notes}</div>", unsafe_allow_html=True)
             
-            # --- ROW 4: INPUTS ---
-            c_in1, c_in2 = st.columns(2)
-            new_note = c_in1.text_input("New Note", key=f"n_{i}", placeholder="Type detail...")
+            c_u1, c_u2 = st.columns(2)
+            new_note = c_u1.text_input("Add New Note", key=f"n_{i}", placeholder="Type here...")
             
-            # Smart Date Label
-            d_label = "📅 Next Call"
-            if "Visit" in ns: d_label = "📍 **Site Visit Date**"
+            date_label = "📅 Follow-up:"
+            if "Visit" in ns or "Scheduled" in ns: date_label = "📍 **Site Visit Date:**"
+            elif "Ringing" in ns: date_label = "⏰ Next Call:"
+            c_u2.write(date_label)
             
-            c_in2.write(d_label)
-            d_opt = c_in2.radio("Select", ["None", "Tom", "3 Days", "Custom"], horizontal=True, key=f"r_{i}", label_visibility="collapsed")
+            date_option = c_u2.radio("Quick Pick", ["None", "Tom", "3 Days", "Custom"], horizontal=True, key=f"radio_{i}", label_visibility="collapsed")
             
             final_date = None
-            if d_opt == "Custom": final_date = c_in2.date_input("Date", min_value=today, key=f"d_{i}", label_visibility="collapsed")
-            elif d_opt == "Tom": final_date = today + timedelta(days=1)
-            elif d_opt == "3 Days": final_date = today + timedelta(days=3)
+            if date_option == "Custom":
+                final_date = c_u2.date_input("Select Date", min_value=today, key=f"cd_{i}")
+            elif date_option == "Tom": final_date = today + timedelta(days=1)
+            elif date_option == "3 Days": final_date = today + timedelta(days=3)
             
-            # Save Button
+            new_assign = None
+            if st.session_state['role'] == "Manager":
+                try: u_idx = all_telecallers.index(assigned_to)
+                except: u_idx = 0
+                new_assign = st.selectbox("Re-Assign:", all_telecallers, index=u_idx, key=f"a_{i}")
+
             st.write("")
             button_ph = st.empty()
             if button_ph.button("✅ SAVE CHANGES", key=f"btn_{i}", type="primary", use_container_width=True):
@@ -417,6 +504,10 @@ def show_live_leads_list(users_df, search_q, status_f):
                             curr = leads_sheet.cell(r, c_idx).value
                             val = int(curr) + 1 if curr and curr.isdigit() else 1
                             updates.append({'range': gspread.utils.rowcol_to_a1(r, c_idx), 'values': [[val]]})
+                        
+                        if new_assign and new_assign != assigned_to:
+                            a_idx = get_col("Assign") or 7
+                            updates.append({'range': gspread.utils.rowcol_to_a1(r, a_idx), 'values': [[new_assign]]})
 
                         leads_sheet.batch_update(updates)
                         button_ph.success("✅ SAVED SUCCESSFULLY!")
