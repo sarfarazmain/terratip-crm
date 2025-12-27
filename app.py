@@ -464,4 +464,127 @@ def show_master_insights():
             
             stats.append({
                 "User": user,
-                "Total": len(user_df
+                "Total": len(user_df),
+                "⚠️ Pending": pending,
+                "🔥 Active": working,
+                "🎉 Sold": sold_count,
+                "🕒 Last Active": last_active
+            })
+        if stats: st.dataframe(pd.DataFrame(stats), use_container_width=True, hide_index=True)
+        else: st.info("No activity yet.")
+    else: st.error(f"⚠️ System Error: Could not find 'Assigned' column.")
+
+def show_admin(users_df):
+    st.header("⚙️ Admin")
+    show_feedback()
+
+    c1, c2 = st.columns([1,2])
+    with c1:
+        st.subheader("Create User")
+        with st.form("nu", clear_on_submit=True):
+            u = st.text_input("User"); p = st.text_input("Pass", type="password")
+            n = st.text_input("Name"); r = st.selectbox("Role", ["Telecaller", "Sales Specialist", "Manager"])
+            if st.form_submit_button("Create"):
+                if u in users_df['Username'].values: st.error("Exists")
+                else: 
+                    users_sheet.append_row([u, hash_pass(p), r, n])
+                    set_feedback(f"✅ Created {u}"); st.rerun()
+        
+        st.divider()
+        st.subheader("📥 Bulk Upload (Auto-Distribute)")
+        
+        telecaller_list = users_df[users_df['Role'].isin(['Telecaller', 'Sales Specialist', 'Manager'])]['Username'].tolist()
+        selected_agents = st.multiselect("Assign Leads To:", telecaller_list, default=telecaller_list)
+        
+        uploaded_file = st.file_uploader("Choose CSV File", type=['csv'])
+        
+        if uploaded_file is not None and st.button("Start Upload"):
+            if not selected_agents:
+                st.error("⚠️ Please select at least one agent.")
+            else:
+                try:
+                    try: df_up = pd.read_csv(uploaded_file, encoding='utf-8')
+                    except: 
+                        try: uploaded_file.seek(0); df_up = pd.read_csv(uploaded_file, encoding='utf-16', sep='\t')
+                        except: uploaded_file.seek(0); df_up = pd.read_csv(uploaded_file, encoding='ISO-8859-1')
+                    
+                    cols = [c.lower() for c in df_up.columns]
+                    name_idx = -1
+                    for i, c in enumerate(cols):
+                        if "full_name" in c or "fullname" in c: name_idx = i; break
+                    if name_idx == -1:
+                        for i, c in enumerate(cols):
+                            if "name" in c and "ad" not in c and "form" not in c and "campaign" not in c: name_idx = i; break
+                    if name_idx == -1: name_idx = next((i for i, c in enumerate(cols) if "name" in c), 0)
+
+                    phone_idx = next((i for i, c in enumerate(cols) if "phone" in c or "mobile" in c or "p:" in c), 1)
+                    
+                    name_col = df_up.columns[name_idx]
+                    phone_col = df_up.columns[phone_idx]
+                    
+                    # STRICT DEDUPE
+                    raw_existing = leads_sheet.col_values(4)
+                    existing_phones_set = {re.sub(r'\D', '', str(p))[-10:] for p in raw_existing}
+                    
+                    rows_to_add = []
+                    ts = get_ist_time()
+                    
+                    agent_cycle = itertools.cycle(selected_agents)
+                    
+                    for idx, row in df_up.iterrows():
+                        p_raw = str(row[phone_col])
+                        p_clean = re.sub(r'\D', '', p_raw)
+                        
+                        if len(p_clean) >= 10:
+                            p_last_10 = p_clean[-10:]
+                            if p_last_10 not in existing_phones_set:
+                                new_id = generate_lead_id()
+                                assigned_person = next(agent_cycle)
+                                new_row = [new_id, ts, row[name_col], p_clean, "Meta Ads", "", assigned_person, "Naya Lead", "", ts, "", "", "", "", ""]
+                                rows_to_add.append(new_row)
+                                existing_phones_set.add(p_last_10)
+                    
+                    if rows_to_add:
+                        leads_sheet.append_rows(rows_to_add)
+                        set_feedback(f"✅ Added {len(rows_to_add)} leads! Distributed to {len(selected_agents)} agents.")
+                    else:
+                        set_feedback("⚠️ No new leads added (duplicates).", "warning")
+                    
+                    time.sleep(1)
+                    st.rerun()
+                except Exception as e: st.error(f"Processing Error: {e}")
+
+    with c2:
+        st.subheader("Team List")
+        st.dataframe(users_df[['Name','Username','Role']], hide_index=True)
+        opts = [x for x in users_df['Username'].unique() if x != st.session_state['username']]
+        if opts:
+            dt = st.selectbox("Delete", opts)
+            if st.button("❌ Delete"):
+                users_sheet.delete_rows(users_sheet.find(dt).row)
+                set_feedback(f"Deleted {dt}"); st.rerun()
+
+def show_dashboard(users_df):
+    show_feedback()
+    show_add_lead_form(users_df)
+    st.divider()
+    
+    c_search, c_filter = st.columns([2, 1])
+    search_q = c_search.text_input("🔍 Search", placeholder="Name / Phone", key="search_q")
+    
+    try: 
+        df_temp = pd.DataFrame(leads_sheet.get_all_records())
+        status_opts = df_temp['Status'].unique() if 'Status' in df_temp.columns else []
+    except: status_opts = []
+    
+    status_f = c_filter.multiselect("Filter", status_opts, key="status_f")
+    
+    show_live_leads_list(users_df, search_q, status_f)
+
+if st.session_state['role'] == "Manager":
+    t1, t2, t3 = st.tabs(["🏠 CRM", "📊 Insights", "⚙️ Admin"])
+    with t1: show_dashboard(users_df)
+    with t2: show_master_insights()
+    with t3: show_admin(users_df)
+else:
+    show_dashboard(users_df)
