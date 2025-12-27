@@ -23,18 +23,7 @@ custom_css = """
         
         .block-container { padding-top: 1rem !important; }
 
-        /* PROFESSIONAL SPLIT HEADER STYLE - THE MAGIC SAUCE */
-        .streamlit-expanderHeader p {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            width: 100%;
-            margin: 0;
-            font-family: 'Roboto', sans-serif;
-            font-size: 16px !important;
-            font-weight: 600 !important;
-        }
-        
+        /* HEADER STYLE - CLEAN & DARK */
         .streamlit-expanderHeader {
             background-color: #262730 !important;
             border: 1px solid #444 !important;
@@ -42,34 +31,12 @@ custom_css = """
             padding: 15px 20px !important;
             margin-bottom: 8px !important;
             color: #ffffff !important;
+            font-family: 'Roboto', sans-serif;
+            font-size: 16px !important;
+            font-weight: 600 !important;
         }
         
         [data-testid="stExpander"] { border: None !important; box-shadow: None !important; }
-        
-        /* TAG BADGE STYLE */
-        .tag-badge {
-            font-size: 11px;
-            background: #444;
-            color: #fff;
-            padding: 2px 6px;
-            border-radius: 4px;
-            margin-left: 8px;
-            text-transform: uppercase;
-            letter-spacing: 0.5px;
-            border: 1px solid #666;
-            vertical-align: middle;
-        }
-
-        /* TIME BADGE RIGHT ALIGNED */
-        .time-badge {
-            font-size: 12px;
-            background: #333;
-            color: #aaa;
-            padding: 4px 8px;
-            border-radius: 4px;
-            font-weight: normal;
-            white-space: nowrap;
-        }
 
         /* ACTION BUTTONS */
         .big-btn {
@@ -88,6 +55,7 @@ custom_css = """
         .call-btn { background-color: #28a745; color: white !important; }
         .wa-btn { background-color: #25D366; color: white !important; }
         
+        /* NOTE HISTORY BOX */
         .note-history {
             font-size: 12px;
             color: #bbb;
@@ -333,10 +301,10 @@ def show_live_leads_list(users_df, search_q, status_f):
         t_val = str(row.get(t_col, '')).strip() if t_col else ""
         ago = get_time_ago(t_val)
         
-        # Tag Logic
+        # Tag Logic - PLAIN TEXT
         tag_col = next((c for c in df.columns if "Tag" in c or "Label" in c), None)
         tag_val = str(row.get(tag_col, '')).strip() if tag_col else ""
-        tag_html = f"<span class='tag-badge'>{tag_val}</span>" if tag_val else ""
+        tag_display = f"[{tag_val}]" if tag_val else ""
         
         score = 4 
         badge_icon = "⚪"
@@ -362,10 +330,10 @@ def show_live_leads_list(users_df, search_q, status_f):
                 badge_text = f"VISIT: {f_date.strftime('%d-%b')}"
              except: pass
 
-        return score, badge_icon, badge_text, ago, f_val, tag_html
+        return score, badge_icon, badge_text, ago, f_val, tag_display
 
     if not df.empty:
-        df[['Score', 'Icon', 'Badge', 'Ago', 'FDate', 'TagHtml']] = df.apply(lambda row: pd.Series(get_lead_meta(row)), axis=1)
+        df[['Score', 'Icon', 'Badge', 'Ago', 'FDate', 'TagText']] = df.apply(lambda row: pd.Series(get_lead_meta(row)), axis=1)
         df = df.sort_values(by=['Score'], ascending=True)
 
     if df.empty: st.info("📭 No leads found."); return
@@ -420,8 +388,9 @@ def show_live_leads_list(users_df, search_q, status_f):
         
         action_text, action_color = get_pipeline_action(status, str(f_val).strip())
 
-        # --- SPLIT HEADER HTML (Name Left, Time Right) ---
-        header_text = f"<span>{row['Icon']} {row['Badge']} | {name} {row['TagHtml']}</span> <span class='time-badge'>🕒 {row['Ago']}</span>"
+        # --- MARKDOWN HEADER (NO HTML) ---
+        # Format: ICON BADGE | NAME [TAG] | 🕒 TIME
+        header_text = f"**{row['Icon']} {row['Badge']}** | {name} {row['TagText']} | 🕒 {row['Ago']}"
         
         with st.expander(label=header_text, expanded=False):
             if action_color == "blue": st.info(action_text)
