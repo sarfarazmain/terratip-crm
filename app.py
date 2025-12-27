@@ -8,7 +8,7 @@ import time
 import re
 import random
 import itertools
-import pytz # TIMEZONE FIX
+import pytz
 
 # --- CONFIGURATION ---
 st.set_page_config(page_title="TerraTip CRM", layout="wide", page_icon="🏡")
@@ -20,8 +20,6 @@ custom_css = """
         #MainMenu {visibility: hidden;}
         footer {visibility: hidden;}
         .stAppDeployButton {display: none;}
-        [data-testid="stElementToolbar"] {display: none;}
-        [data-testid="stDecoration"] {display: none;}
         
         .block-container { padding-top: 1rem !important; }
 
@@ -53,7 +51,7 @@ custom_css = """
         .wa-btn { background-color: #25D366; color: white !important; }
         
         div[role="radiogroup"] > label {
-            padding: 12px;
+            padding: 8px 12px;
             background: #1e1e1e;
             border: 1px solid #333;
             border-radius: 6px;
@@ -61,17 +59,16 @@ custom_css = """
             margin-bottom: 5px;
         }
         
-        /* NOTE HISTORY BOX */
         .note-history {
-            font-size: 12px;
-            color: #aaa;
-            background: #111;
-            padding: 10px;
-            border-radius: 5px;
-            max-height: 100px;
+            font-size: 13px;
+            color: #ccc;
+            background: #1a1a1a;
+            padding: 12px;
+            border-radius: 8px;
+            max-height: 120px;
             overflow-y: auto;
-            margin-bottom: 10px;
-            border: 1px solid #333;
+            margin-bottom: 15px;
+            border-left: 3px solid #28a745;
         }
     </style>
 """
@@ -127,6 +124,15 @@ def init_auth_system(sh):
         ws.append_row(["Username", "Password", "Role", "Name"])
         ws.append_row(["admin", hash_pass("admin123"), "Manager", "System Admin"])
     return ws
+
+def robust_update(sheet, phone_number, col_index, value):
+    try:
+        cell = sheet.find(phone_number)
+        if cell:
+            sheet.update_cell(cell.row, col_index, value)
+            return True, "Updated"
+        return False, "Lead not found"
+    except Exception as e: return False, str(e)
 
 def generate_lead_id(prefix="L"):
     ts = str(int(time.time()))[-6:] 
@@ -189,7 +195,7 @@ st.divider()
 def big_call_btn(num): return f"""<a href="tel:{num}" class="big-btn call-btn">📞 CALL NOW</a>"""
 def big_wa_btn(num, name): return f"""<a href="https://wa.me/91{num}?text=Namaste {name}" class="big-btn wa-btn" target="_blank">💬 WHATSAPP</a>"""
 
-# --- LIVE FEED (FRAGMENT) ---
+# --- LIVE FEED (FRAGMENT - FORM REMOVED FOR DYNAMIC DATE PICKER) ---
 @st.fragment(run_every=30)
 def show_live_leads_list(users_df, search_q, status_f):
     try: data = leads_sheet.get_all_records(); df = pd.DataFrame(data)
@@ -208,8 +214,9 @@ def show_live_leads_list(users_df, search_q, status_f):
     if search_q: df = df[df.astype(str).apply(lambda x: x.str.contains(search_q, case=False)).any(axis=1)]
     if status_f: df = df[df['Status'].isin(status_f)]
 
-    today = get_ist_date() # USE IST DATE
+    today = get_ist_date() # IST DATE
     
+    # --- PRIORITY & ALERT LOGIC ---
     def get_priority_data(row):
         status = row.get('Status', '')
         f_col = next((c for c in df.columns if "Follow" in c), None)
@@ -259,9 +266,9 @@ def show_live_leads_list(users_df, search_q, status_f):
         if "junk" in val or "invalid" in val or "agent" in val or "faltu" in val: return 8
         return 0
 
-    # --- LOGIC FIX: Date Priority over Status ---
+    # --- ACTION BAR LOGIC (FIXED) ---
     def get_pipeline_action(status, f_date_str):
-        # 1. Check Date FIRST
+        # 1. DATE PRIORITY
         if f_date_str and len(str(f_date_str)) > 5:
             try:
                 f_date = datetime.strptime(f_date_str, "%Y-%m-%d").date()
@@ -269,7 +276,7 @@ def show_live_leads_list(users_df, search_q, status_f):
                 if f_date == today: return ("🟡 ACTION: Call Today!", "orange")
             except: pass
 
-        # 2. Check Status SECOND
+        # 2. STATUS PRIORITY
         s = status.lower()
         if "naya" in s: return ("⚡ ACTION: Call Immediately", "blue")
         if "ring" in s or "busy" in s: return ("⏰ ACTION: Retry in 4 hours", "orange")
@@ -288,7 +295,6 @@ def show_live_leads_list(users_df, search_q, status_f):
         phone = str(row.get('Phone', '')).replace(',', '').replace('.', '')
         assigned_to = row.get(assign_col_name, '-') if assign_col_name else '-'
         
-        # Get Follow up column value
         f_col_name = next((c for c in df.columns if "Follow" in c), None)
         f_val = row.get(f_col_name, '') if f_col_name else ''
         
@@ -300,7 +306,6 @@ def show_live_leads_list(users_df, search_q, status_f):
         elif "Negotiation" in status: icon = "💰"
         
         alert_text = row.get('Alert', '')
-        # Fix Action Logic Pass Date
         action_text, action_color = get_pipeline_action(status, str(f_val).strip())
 
         with st.expander(f"{icon} {alert_text} {name}"):
@@ -318,85 +323,94 @@ def show_live_leads_list(users_df, search_q, status_f):
             st.markdown(f"**📞 {phone}** | 📌 {row.get('Source', '-')}")
             if st.session_state['role'] == "Manager": st.caption(f"Assigned: {assigned_to}")
 
-            with st.form(f"u_{i}"):
-                st.write("📝 **Status:**")
-                default_idx = get_smart_index(status)
-                ns = st.selectbox("Status", status_opts, key=f"s_{i}", index=default_idx, label_visibility="collapsed")
-                
-                # --- NOTE HISTORY LOGIC ---
-                existing_notes = str(row.get('Notes', ''))
-                if existing_notes and existing_notes != "nan":
-                    st.markdown(f"<div class='note-history'>{existing_notes}</div>", unsafe_allow_html=True)
-                
-                c_u1, c_u2 = st.columns(2)
-                new_note = c_u1.text_input("Add Note", key=f"n_{i}", placeholder="Type new note...")
-                
-                c_u2.write("📅 Follow-up:")
-                # CUSTOM DATE PICKER LOGIC
-                date_option = c_u2.radio("Follow-up", ["None", "Tom", "3 Days", "Custom"], horizontal=True, key=f"radio_{i}", label_visibility="collapsed")
-                
-                custom_date_val = None
-                if date_option == "Custom":
-                    custom_date_val = c_u2.date_input("Select Date", min_value=today, key=f"cd_{i}")
-                
-                final_date = None
-                if date_option == "Tom": final_date = today + timedelta(days=1)
-                elif date_option == "3 Days": final_date = today + timedelta(days=3)
-                elif date_option == "Custom": final_date = custom_date_val
-                
-                new_assign = None
-                if st.session_state['role'] == "Manager":
-                    try: u_idx = all_telecallers.index(assigned_to)
-                    except: u_idx = 0
-                    new_assign = st.selectbox("Re-Assign:", all_telecallers, index=u_idx, key=f"a_{i}")
+            # --- NO FORM: DYNAMIC INTERFACE ---
+            st.write("📝 **Status:**")
+            default_idx = get_smart_index(status)
+            ns = st.selectbox("Status", status_opts, key=f"s_{i}", index=default_idx, label_visibility="collapsed")
+            
+            # NOTE HISTORY
+            existing_notes = str(row.get('Notes', ''))
+            if existing_notes and existing_notes != "nan" and len(existing_notes) > 2:
+                st.markdown(f"<div class='note-history'>{existing_notes}</div>", unsafe_allow_html=True)
+            
+            c_u1, c_u2 = st.columns(2)
+            new_note = c_u1.text_input("Add New Note", key=f"n_{i}", placeholder="Type here...")
+            
+            c_u2.write("📅 Follow-up:")
+            
+            # --- DYNAMIC DATE LOGIC ---
+            # Radio for quick pick
+            date_option = c_u2.radio("Quick Pick", ["None", "Tom", "3 Days", "Custom"], horizontal=True, key=f"radio_{i}", label_visibility="collapsed")
+            
+            final_date = None
+            # If Custom selected, SHOW CALENDAR immediately
+            if date_option == "Custom":
+                final_date = c_u2.date_input("Select Date", min_value=today, key=f"cd_{i}")
+            elif date_option == "Tom":
+                final_date = today + timedelta(days=1)
+            elif date_option == "3 Days":
+                final_date = today + timedelta(days=3)
+            
+            new_assign = None
+            if st.session_state['role'] == "Manager":
+                try: u_idx = all_telecallers.index(assigned_to)
+                except: u_idx = 0
+                new_assign = st.selectbox("Re-Assign:", all_telecallers, index=u_idx, key=f"a_{i}")
 
-                st.write("")
-                if st.form_submit_button("✅ UPDATE LEAD", type="primary", use_container_width=True):
-                    try:
-                        cell = leads_sheet.find(phone)
-                        if not cell:
-                            st.error("❌ Lead not found")
-                        else:
-                            r = cell.row
-                            h = leads_sheet.row_values(1)
-                            
-                            def get_col(name):
-                                try: return next(i for i,v in enumerate(h) if name.lower() in v.lower()) + 1
-                                except: return None
-                            
-                            updates = []
-                            s_idx = get_col("Status") or 8
-                            updates.append({'range': gspread.utils.rowcol_to_a1(r, s_idx), 'values': [[ns]]})
-                            
-                            # APPEND NOTE LOGIC (IST TIME)
-                            if new_note:
-                                n_idx = get_col("Notes") or 12
-                                timestamp_str = datetime.now(IST).strftime("%d/%m")
-                                # If existing notes exist, prepend new note
-                                updated_note = f"{timestamp_str}: {new_note} | {existing_notes}" if len(existing_notes) > 3 else f"{timestamp_str}: {new_note}"
-                                updates.append({'range': gspread.utils.rowcol_to_a1(r, n_idx), 'values': [[updated_note]]})
-                            
-                            f_idx = get_col("Follow") or 15
-                            if final_date: updates.append({'range': gspread.utils.rowcol_to_a1(r, f_idx), 'values': [[str(final_date)]]})
-                            
-                            t_idx = get_col("Last Call") or 10
-                            updates.append({'range': gspread.utils.rowcol_to_a1(r, t_idx), 'values': [[get_ist_time()]]})
-                            
-                            if new_assign and new_assign != assigned_to:
-                                a_idx = get_col("Assign") or 7
-                                updates.append({'range': gspread.utils.rowcol_to_a1(r, a_idx), 'values': [[new_assign]]})
-                            
-                            c_idx = get_col("Count")
-                            if c_idx:
-                                curr = leads_sheet.cell(r, c_idx).value
-                                val = int(curr) + 1 if curr and curr.isdigit() else 1
-                                updates.append({'range': gspread.utils.rowcol_to_a1(r, c_idx), 'values': [[val]]})
+            st.write("")
+            if st.button("✅ SAVE UPDATES", key=f"btn_{i}", type="primary", use_container_width=True):
+                try:
+                    cell = leads_sheet.find(phone)
+                    if not cell:
+                        st.error("❌ Lead not found")
+                    else:
+                        r = cell.row
+                        h = leads_sheet.row_values(1)
+                        
+                        def get_col(name):
+                            try: return next(i for i,v in enumerate(h) if name.lower() in v.lower()) + 1
+                            except: return None
+                        
+                        updates = []
+                        
+                        # Status
+                        s_idx = get_col("Status") or 8
+                        updates.append({'range': gspread.utils.rowcol_to_a1(r, s_idx), 'values': [[ns]]})
+                        
+                        # Notes (Append Mode)
+                        if new_note:
+                            n_idx = get_col("Notes") or 12
+                            ts_str = datetime.now(IST).strftime("%d-%b")
+                            # Combine New + Old
+                            full_note = f"[{ts_str}] {new_note}\n{existing_notes}"
+                            updates.append({'range': gspread.utils.rowcol_to_a1(r, n_idx), 'values': [[full_note]]})
+                        
+                        # Date
+                        f_idx = get_col("Follow") or 15
+                        if final_date: 
+                            updates.append({'range': gspread.utils.rowcol_to_a1(r, f_idx), 'values': [[str(final_date)]]})
+                        
+                        # Time
+                        t_idx = get_col("Last Call") or 10
+                        updates.append({'range': gspread.utils.rowcol_to_a1(r, t_idx), 'values': [[get_ist_time()]]})
+                        
+                        # Assign
+                        if new_assign and new_assign != assigned_to:
+                            a_idx = get_col("Assign") or 7
+                            updates.append({'range': gspread.utils.rowcol_to_a1(r, a_idx), 'values': [[new_assign]]})
+                        
+                        # Count
+                        c_idx = get_col("Count")
+                        if c_idx:
+                            curr = leads_sheet.cell(r, c_idx).value
+                            val = int(curr) + 1 if curr and curr.isdigit() else 1
+                            updates.append({'range': gspread.utils.rowcol_to_a1(r, c_idx), 'values': [[val]]})
 
-                            leads_sheet.batch_update(updates)
-                            set_feedback(f"✅ Updated {name}")
-                            time.sleep(1)
-                            st.rerun()
-                    except Exception as e: st.error(f"Err: {e}")
+                        leads_sheet.batch_update(updates)
+                        set_feedback(f"✅ Updated {name}")
+                        time.sleep(1)
+                        st.rerun()
+                except Exception as e: st.error(f"Err: {e}")
 
 def show_add_lead_form(users_df):
     with st.expander("➕ Naya Lead Jodein", expanded=False):
