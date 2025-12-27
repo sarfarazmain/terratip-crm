@@ -13,7 +13,7 @@ import pytz
 # --- CONFIGURATION ---
 st.set_page_config(page_title="TerraTip CRM", layout="wide", page_icon="🏡")
 
-# --- CUSTOM CSS (PIXEL PERFECT MOBILE UI) ---
+# --- CUSTOM CSS (MARKDOWN STYLING MAGIC) ---
 custom_css = """
     <style>
         header {visibility: hidden;}
@@ -23,19 +23,19 @@ custom_css = """
         
         .block-container { padding-top: 0.5rem !important; }
 
-        /* --- HEADER LAYOUT --- */
+        /* --- EXPANDER HEADER STYLING --- */
         .streamlit-expanderHeader {
             background-color: #262730 !important;
             border: 1px solid #444 !important;
             border-radius: 8px !important;
-            padding: 8px 12px !important; /* Tighter padding */
+            padding: 10px 12px !important;
             margin-bottom: 6px !important;
             color: #eee !important;
             font-family: 'Roboto', sans-serif;
             font-size: 14px !important;
         }
         
-        /* The container for the header text elements */
+        /* The container logic */
         .streamlit-expanderHeader p {
             display: flex;
             align-items: center;
@@ -43,11 +43,11 @@ custom_css = """
             margin: 0;
         }
 
-        /* 1. THE BADGE (Bold) - Fixed Width for Perfect Alignment */
+        /* 1. STATUS BADGE (Targeting **Bold Text**) */
         .streamlit-expanderHeader strong {
             display: inline-block;
-            width: 80px; /* FIXED WIDTH */
-            min-width: 80px;
+            min-width: 85px; /* Fixed width forces alignment */
+            max-width: 85px;
             text-align: center;
             background: #333;
             color: #fff;
@@ -55,41 +55,32 @@ custom_css = """
             border-radius: 4px;
             font-weight: 700;
             font-size: 11px;
-            margin-right: 10px;
+            margin-right: 12px;
             white-space: nowrap;
             overflow: hidden;
             border: 1px solid #555;
         }
 
-        /* 2. THE NAME & TAGS (Normal Text) - Flex Grow */
-        .streamlit-expanderHeader span {
-            flex-grow: 1;
-            white-space: nowrap;
-            overflow: hidden;
-            text-overflow: ellipsis;
-            font-weight: 500;
-            margin-right: 8px;
-        }
-        
-        /* Tags inside the name area */
+        /* 2. TAGS (Targeting `Code Text`) */
         .streamlit-expanderHeader code {
             font-family: sans-serif;
             font-size: 10px;
             background: #444;
             color: #aaa;
-            padding: 1px 4px;
+            padding: 2px 5px;
             border-radius: 3px;
-            margin-left: 4px;
+            margin-left: 6px;
+            border: none;
         }
 
-        /* 3. THE TIME (Italic) - Pinned Right */
+        /* 3. TIME (Targeting *Italic Text*) */
         .streamlit-expanderHeader em {
             font-style: normal;
-            font-size: 10px;
-            color: #777;
+            font-size: 11px;
+            color: #888;
+            margin-left: auto; /* Pushes to the far right */
             white-space: nowrap;
-            min-width: 40px;
-            text-align: right;
+            padding-left: 8px;
         }
 
         /* ACTION BUTTONS */
@@ -319,32 +310,38 @@ def show_live_leads_list(users_df, search_q, status_f):
         t_val = str(row.get(t_col, '')).strip() if t_col else ""
         ago = get_time_ago(t_val)
         
-        # Tag Display (Plain Text for Markdown code block)
+        # Tag Logic
         tag_col = next((c for c in df.columns if "Tag" in c or "Label" in c), None)
         tag_val = str(row.get(tag_col, '')).strip() if tag_col else ""
+        # IMPORTANT: Use Code Block syntax for Tags
         tag_display = f"`{tag_val}`" if tag_val else ""
         
-        score = 4; badge_text = "PASSIVE"
+        # Truncate Name
+        raw_name = str(row.get('Client Name', 'Unknown'))
+        name_display = raw_name[:18] + ".." if len(raw_name) > 18 else raw_name
         
-        if "naya" in status.lower() or "new" in status.lower(): score = 0; badge_text = "⚡ NEW"
-        elif "visit" in status.lower() or "schedule" in status.lower(): score = 0; badge_text = "📍 VISIT"
-        elif "negotiat" in status.lower(): score = 0; badge_text = "💰 DEAL"
+        score = 4; badge_text = "PASSIVE"
+        badge_icon = "⚪"
+        
+        if "naya" in status.lower() or "new" in status.lower(): score = 0; badge_text = "NEW"; badge_icon="⚡"
+        elif "visit" in status.lower() or "schedule" in status.lower(): score = 0; badge_text = "VISIT"; badge_icon="📍"
+        elif "negotiat" in status.lower(): score = 0; badge_text = "DEAL"; badge_icon="💰"
         elif f_val and len(f_val) > 5:
             try:
                 f_date = datetime.strptime(f_val, "%Y-%m-%d").date()
-                if f_date < today: score = 1; badge_text = f"🔴 {f_date.strftime('%d%b')}"
-                elif f_date == today: score = 2; badge_text = "🟡 TODAY"
-                else: score = 3; badge_text = f"🗓️ {f_date.strftime('%d%b')}"
+                if f_date < today: score = 1; badge_text = f"LATE {f_date.strftime('%d%b')}"; badge_icon="🔴"
+                elif f_date == today: score = 2; badge_text = "TODAY"; badge_icon="🟡"
+                else: score = 3; badge_text = f"{f_date.strftime('%d%b')}"; badge_icon="🗓️"
             except: pass
             
         if "VISIT" in badge_text and f_val and len(f_val) > 5:
-             try: f_date = datetime.strptime(f_val, "%Y-%m-%d").date(); badge_text = f"📍 {f_date.strftime('%d%b')}"
+             try: f_date = datetime.strptime(f_val, "%Y-%m-%d").date(); badge_text = f"{f_date.strftime('%d%b')}"; badge_icon="📍"
              except: pass
 
-        return score, badge_text, ago, f_val, tag_display
+        return score, badge_text, badge_icon, ago, f_val, name_display, tag_display
 
     if not df.empty:
-        df[['Score', 'Badge', 'Ago', 'FDate', 'TagText']] = df.apply(lambda row: pd.Series(get_lead_meta(row)), axis=1)
+        df[['Score', 'Badge', 'Icon', 'Ago', 'FDate', 'ShortName', 'TagText']] = df.apply(lambda row: pd.Series(get_lead_meta(row)), axis=1)
         df = df.sort_values(by=['Score'], ascending=True)
 
     if df.empty: st.info("📭 No leads found."); return
@@ -382,10 +379,9 @@ def show_live_leads_list(users_df, search_q, status_f):
         status = str(row.get('Status', 'Naya Lead')).strip()
         action_text, action_color = get_pipeline_action(status, str(f_val).strip())
 
-        # --- HEADER CONSTRUCTION ---
-        # Markdown: **BADGE** <span>Name `Tag`</span> *Time*
-        # The CSS uses flexbox to push the *Time* to the right.
-        header_text = f"**{row['Badge']}** <span>{row['Client Name']} {row['TagText']}</span> *{row['Ago']}*"
+        # --- PURE MARKDOWN HEADER ---
+        # **Bold Badge** Name `Tag` *Time*
+        header_text = f"**{row['Icon']} {row['Badge']}** {row['ShortName']} {row['TagText']} *{row['Ago']}*"
         
         container = st
         if is_bulk_mode:
