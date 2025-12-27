@@ -13,7 +13,7 @@ import pytz
 # --- CONFIGURATION ---
 st.set_page_config(page_title="TerraTip CRM", layout="wide", page_icon="🏡")
 
-# --- CUSTOM CSS (MARKDOWN STYLING MAGIC) ---
+# --- CUSTOM CSS ---
 custom_css = """
     <style>
         header {visibility: hidden;}
@@ -23,7 +23,7 @@ custom_css = """
         
         .block-container { padding-top: 0.5rem !important; }
 
-        /* --- EXPANDER HEADER STYLING --- */
+        /* --- MOBILE HEADER DESIGN --- */
         .streamlit-expanderHeader {
             background-color: #262730 !important;
             border: 1px solid #444 !important;
@@ -33,66 +33,72 @@ custom_css = """
             color: #eee !important;
             font-family: 'Roboto', sans-serif;
             font-size: 14px !important;
+            line-height: 1.5 !important;
         }
         
-        /* The container logic */
         .streamlit-expanderHeader p {
             display: flex;
             align-items: center;
             width: 100%;
             margin: 0;
+            overflow: hidden;
         }
 
-        /* 1. STATUS BADGE (Targeting **Bold Text**) */
+        /* 1. BADGE (Bold) */
         .streamlit-expanderHeader strong {
-            display: inline-block;
-            min-width: 85px; /* Fixed width forces alignment */
-            max-width: 85px;
-            text-align: center;
             background: #333;
             color: #fff;
-            padding: 2px 4px;
+            padding: 2px 6px;
             border-radius: 4px;
             font-weight: 700;
             font-size: 11px;
-            margin-right: 12px;
+            margin-right: 8px;
             white-space: nowrap;
-            overflow: hidden;
             border: 1px solid #555;
+            min-width: 60px;
+            text-align: center;
         }
 
-        /* 2. TAGS (Targeting `Code Text`) */
+        /* 2. NAME (Normal) */
+        .streamlit-expanderHeader span {
+            font-weight: 500;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            flex-grow: 1;
+            margin-right: 5px;
+        }
+        
+        /* 3. TAGS (Code) */
         .streamlit-expanderHeader code {
-            font-family: sans-serif;
-            font-size: 10px;
             background: #444;
-            color: #aaa;
-            padding: 2px 5px;
+            color: #ddd;
+            font-size: 10px;
+            padding: 2px 4px;
             border-radius: 3px;
-            margin-left: 6px;
+            margin-left: 5px;
             border: none;
         }
 
-        /* 3. TIME (Targeting *Italic Text*) */
+        /* 4. TIME (Italic) */
         .streamlit-expanderHeader em {
             font-style: normal;
-            font-size: 11px;
+            font-size: 10px;
             color: #888;
-            margin-left: auto; /* Pushes to the far right */
+            margin-left: auto;
             white-space: nowrap;
-            padding-left: 8px;
+            padding-left: 5px;
         }
 
-        /* ACTION BUTTONS */
         .big-btn {
             display: block;
             width: 100%;
-            padding: 10px; 
+            padding: 12px; 
             text-align: center;
             border-radius: 6px;
             text-decoration: none;
             font-weight: 700;
-            font-size: 14px;
+            font-size: 15px;
             letter-spacing: 0.5px;
             margin-bottom: 10px;
             box-shadow: 0 2px 4px rgba(0,0,0,0.2);
@@ -100,7 +106,6 @@ custom_css = """
         .call-btn { background-color: #28a745; color: white !important; }
         .wa-btn { background-color: #25D366; color: white !important; }
         
-        /* NOTE HISTORY */
         .note-history {
             font-size: 12px;
             color: #bbb;
@@ -113,23 +118,21 @@ custom_css = """
             border-left: 3px solid #555;
         }
         
-        /* FORM LABELS */
         div[role="radiogroup"] > label {
-            padding: 4px 8px;
+            padding: 5px 10px;
             background: #1e1e1e;
             border: 1px solid #333;
             border-radius: 4px;
-            font-size: 13px;
+            font-size: 14px;
         }
         
-        [data-testid="stCheckbox"] { margin-top: 12px; }
+        [data-testid="stCheckbox"] { margin-top: 10px; }
     </style>
 """
 st.markdown(custom_css, unsafe_allow_html=True)
 
-# --- TIMEZONE SETUP (IST) ---
+# --- TIMEZONE SETUP ---
 IST = pytz.timezone('Asia/Kolkata')
-
 def get_ist_time(): return datetime.now(IST).strftime("%Y-%m-%d %H:%M")
 def get_ist_date(): return datetime.now(IST).date()
 
@@ -170,13 +173,6 @@ def init_auth_system(sh):
         ws.append_row(["admin", hash_pass("admin123"), "Manager", "System Admin"])
     return ws
 
-def robust_update(sheet, phone_number, col_index, value):
-    try:
-        cell = sheet.find(phone_number)
-        if cell: sheet.update_cell(cell.row, col_index, value); return True, "Updated"
-        return False, "Lead not found"
-    except Exception as e: return False, str(e)
-
 def generate_lead_id(prefix="L"):
     ts = str(int(time.time()))[-6:] 
     rand = str(random.randint(10, 99))
@@ -188,11 +184,9 @@ def get_time_ago(last_call_str):
     except:
         try: last_dt = datetime.strptime(str(last_call_str).strip(), "%Y-%m-%d")
         except: return "-"
-    
     if last_dt.tzinfo is None: last_dt = IST.localize(last_dt)
     now = datetime.now(IST)
     diff = now - last_dt
-    
     if diff.days == 0:
         hrs = diff.seconds // 3600
         if hrs == 0: return "Now"
@@ -301,7 +295,7 @@ def show_live_leads_list(users_df, search_q, status_f):
                                     if updates: leads_sheet.batch_update(updates); set_feedback(f"✅ Applied!"); time.sleep(1); st.rerun()
                             except Exception as e: st.error(f"Err: {e}")
 
-    # --- LEAD DATA ---
+    # --- LEAD DATA & SORTING ---
     def get_lead_meta(row):
         status = str(row.get('Status', '')).strip()
         f_col = next((c for c in df.columns if "Follow" in c), None)
@@ -310,39 +304,46 @@ def show_live_leads_list(users_df, search_q, status_f):
         t_val = str(row.get(t_col, '')).strip() if t_col else ""
         ago = get_time_ago(t_val)
         
-        # Tag Logic
         tag_col = next((c for c in df.columns if "Tag" in c or "Label" in c), None)
         tag_val = str(row.get(tag_col, '')).strip() if tag_col else ""
-        # IMPORTANT: Use Code Block syntax for Tags
         tag_display = f"`{tag_val}`" if tag_val else ""
         
-        # Truncate Name
         raw_name = str(row.get('Client Name', 'Unknown'))
         name_display = raw_name[:18] + ".." if len(raw_name) > 18 else raw_name
         
-        score = 4; badge_text = "PASSIVE"
-        badge_icon = "⚪"
+        score = 4; badge_text = "PASSIVE"; badge_icon = "⚪"
+        sort_date = date.max # Default sort date is far future
         
-        if "naya" in status.lower() or "new" in status.lower(): score = 0; badge_text = "NEW"; badge_icon="⚡"
-        elif "visit" in status.lower() or "schedule" in status.lower(): score = 0; badge_text = "VISIT"; badge_icon="📍"
-        elif "negotiat" in status.lower(): score = 0; badge_text = "DEAL"; badge_icon="💰"
+        if "naya" in status.lower() or "new" in status.lower(): 
+            score = 0; badge_text = "NEW"; badge_icon="⚡"
+        elif "visit" in status.lower() or "schedule" in status.lower(): 
+            score = 0; badge_text = "VISIT"; badge_icon="📍"
+        elif "negotiat" in status.lower(): 
+            score = 0; badge_text = "DEAL"; badge_icon="💰"
         elif f_val and len(f_val) > 5:
             try:
                 f_date = datetime.strptime(f_val, "%Y-%m-%d").date()
+                sort_date = f_date # Capture valid date for sorting
+                
                 if f_date < today: score = 1; badge_text = f"LATE {f_date.strftime('%d%b')}"; badge_icon="🔴"
                 elif f_date == today: score = 2; badge_text = "TODAY"; badge_icon="🟡"
                 else: score = 3; badge_text = f"{f_date.strftime('%d%b')}"; badge_icon="🗓️"
             except: pass
             
         if "VISIT" in badge_text and f_val and len(f_val) > 5:
-             try: f_date = datetime.strptime(f_val, "%Y-%m-%d").date(); badge_text = f"{f_date.strftime('%d%b')}"; badge_icon="📍"
+             try: 
+                 f_date = datetime.strptime(f_val, "%Y-%m-%d").date()
+                 badge_text = f"{f_date.strftime('%d%b')}"; badge_icon="📍"
+                 sort_date = f_date # Ensure Visits sort by date too
              except: pass
 
-        return score, badge_text, badge_icon, ago, f_val, name_display, tag_display
+        return score, sort_date, badge_text, badge_icon, ago, f_val, name_display, tag_display
 
     if not df.empty:
-        df[['Score', 'Badge', 'Icon', 'Ago', 'FDate', 'ShortName', 'TagText']] = df.apply(lambda row: pd.Series(get_lead_meta(row)), axis=1)
-        df = df.sort_values(by=['Score'], ascending=True)
+        # Create dedicated columns for sorting
+        df[['Score', 'SortDate', 'Badge', 'Icon', 'Ago', 'FDate', 'ShortName', 'TagText']] = df.apply(lambda row: pd.Series(get_lead_meta(row)), axis=1)
+        # PRIMARY SORT: Score (0=Urgent), SECONDARY SORT: Date (Ascending)
+        df = df.sort_values(by=['Score', 'SortDate'], ascending=[True, True])
 
     if df.empty: st.info("📭 No leads found."); return
 
@@ -379,9 +380,8 @@ def show_live_leads_list(users_df, search_q, status_f):
         status = str(row.get('Status', 'Naya Lead')).strip()
         action_text, action_color = get_pipeline_action(status, str(f_val).strip())
 
-        # --- PURE MARKDOWN HEADER ---
-        # **Bold Badge** Name `Tag` *Time*
-        header_text = f"**{row['Icon']} {row['Badge']}** {row['ShortName']} {row['TagText']} *{row['Ago']}*"
+        # **Icon Badge** Name `Tag` *Time*
+        header_text = f"**{row['Icon']} {row['Badge']}** <span>{row['ShortName']} {row['TagText']}</span> *{row['Ago']}*"
         
         container = st
         if is_bulk_mode:
