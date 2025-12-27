@@ -75,6 +75,11 @@ custom_css = """
             border-radius: 4px;
             font-size: 14px;
         }
+        
+        /* CHECKBOX ALIGNMENT */
+        [data-testid="stCheckbox"] {
+            margin-top: 20px;
+        }
     </style>
 """
 st.markdown(custom_css, unsafe_allow_html=True)
@@ -241,56 +246,55 @@ def show_live_leads_list(users_df, search_q, status_f):
 
     today = get_ist_date()
     
-    # --- BULK LABELING (MANAGER) ---
+    # --- BULK MODE CONTROLLER ---
+    is_bulk_mode = False
     if st.session_state['role'] == "Manager":
-        with st.expander("🏷️ Bulk Labeling Tool (Manager)", expanded=False):
-            if not df.empty:
-                st.caption("Apply custom labels to filtered leads (e.g. 'Old Meta', 'Event 2024')")
-                df['DisplayLabel'] = df['Client Name'] + " (" + df['Phone'].astype(str) + ")"
-                
-                select_all = st.checkbox("Select All Filtered Leads")
-                if select_all:
-                    selected_leads = df['Phone'].tolist()
-                    st.info(f"✅ {len(selected_leads)} leads selected.")
-                else:
-                    selected_items = st.multiselect("Select Leads:", df['DisplayLabel'])
-                    selected_leads = [x.split("(")[-1].replace(")", "") for x in selected_items]
-                
-                custom_tag = st.text_input("Enter Label Name", placeholder="e.g. Old Meta Lead")
-                
-                if st.button("Apply Label") and custom_tag:
-                    if not selected_leads:
-                        st.error("No leads selected.")
+        c_bulk_switch, c_bulk_input = st.columns([1, 3])
+        is_bulk_mode = c_bulk_switch.toggle("🏷️ Bulk Labeling Mode")
+        
+        if is_bulk_mode:
+            with c_bulk_input:
+                b_col1, b_col2 = st.columns([2, 1])
+                tag_to_apply = b_col1.text_input("New Label Name", placeholder="e.g. Warm Lead", label_visibility="collapsed")
+                if b_col2.button("Apply to Checked", type="primary"):
+                    if not tag_to_apply:
+                        st.error("Please type a label name.")
                     else:
-                        try:
-                            h = leads_sheet.row_values(1)
-                            # FIND TAG COLUMN (Column Q usually)
-                            try: t_idx = next(i for i,v in enumerate(h) if "Tag" in v or "Label" in v) + 1
-                            except: 
-                                st.error("❌ 'Tags' column not found! Please add a column named 'Tags' to your Sheet.")
-                                t_idx = None
-                            
-                            if t_idx:
-                                all_records = leads_sheet.get_all_values()
-                                updates = []
+                        # FIND CHECKED LEADS
+                        selected_phones = []
+                        for idx, row in df.iterrows():
+                            p_key = str(row['Phone']).replace(',', '').replace('.', '')
+                            if st.session_state.get(f"sel_{p_key}", False):
+                                selected_phones.append(p_key)
+                        
+                        if not selected_phones:
+                            st.warning("No leads checked.")
+                        else:
+                            try:
+                                h = leads_sheet.row_values(1)
+                                try: t_idx = next(i for i,v in enumerate(h) if "Tag" in v or "Label" in v) + 1
+                                except: 
+                                    st.error("❌ 'Tags' column missing in Sheet.")
+                                    t_idx = None
                                 
-                                for lead_phone in selected_leads:
-                                    r_idx = -1
-                                    # Basic loop to find row by phone
-                                    for i, row in enumerate(all_records):
-                                        if str(row[3]) == str(lead_phone) or str(row[3]).replace('.0','') == str(lead_phone):
-                                            r_idx = i + 1
-                                            break
+                                if t_idx:
+                                    all_records = leads_sheet.get_all_values()
+                                    updates = []
+                                    for p in selected_phones:
+                                        r_idx = -1
+                                        for i, row in enumerate(all_records):
+                                            if str(row[3]) == str(p) or str(row[3]).replace('.0','') == str(p):
+                                                r_idx = i + 1
+                                                break
+                                        if r_idx != -1:
+                                            updates.append({'range': gspread.utils.rowcol_to_a1(r_idx, t_idx), 'values': [[tag_to_apply]]})
                                     
-                                    if r_idx != -1:
-                                        updates.append({'range': gspread.utils.rowcol_to_a1(r_idx, t_idx), 'values': [[custom_tag]]})
-                                
-                                if updates:
-                                    leads_sheet.batch_update(updates)
-                                    set_feedback(f"✅ Labeled {len(updates)} leads as '{custom_tag}'!")
-                                    time.sleep(1)
-                                    st.rerun()
-                        except Exception as e: st.error(f"Error: {e}")
+                                    if updates:
+                                        leads_sheet.batch_update(updates)
+                                        set_feedback(f"✅ Applied '{tag_to_apply}' to {len(updates)} leads!")
+                                        time.sleep(1)
+                                        st.rerun()
+                            except Exception as e: st.error(f"Err: {e}")
 
     # --- LEAD DATA PREP ---
     def get_lead_meta(row):
@@ -301,10 +305,10 @@ def show_live_leads_list(users_df, search_q, status_f):
         t_val = str(row.get(t_col, '')).strip() if t_col else ""
         ago = get_time_ago(t_val)
         
-        # Tag Logic - PLAIN TEXT
+        # Tag Logic - PLAIN TEXT for Markdown
         tag_col = next((c for c in df.columns if "Tag" in c or "Label" in c), None)
         tag_val = str(row.get(tag_col, '')).strip() if tag_col else ""
-        tag_display = f"[{tag_val}]" if tag_val else ""
+        tag_display = f" `[{tag_val}]`" if tag_val else ""
         
         score = 4 
         badge_icon = "⚪"
@@ -388,11 +392,20 @@ def show_live_leads_list(users_df, search_q, status_f):
         
         action_text, action_color = get_pipeline_action(status, str(f_val).strip())
 
-        # --- MARKDOWN HEADER (NO HTML) ---
-        # Format: ICON BADGE | NAME [TAG] | 🕒 TIME
+        # --- HEADER RENDER ---
         header_text = f"**{row['Icon']} {row['Badge']}** | {name} {row['TagText']} | 🕒 {row['Ago']}"
         
-        with st.expander(label=header_text, expanded=False):
+        # --- BULK MODE UI SPLIT ---
+        if is_bulk_mode:
+            c_check, c_body = st.columns([0.05, 0.95])
+            with c_check:
+                # Unique Key based on Phone
+                st.checkbox("", key=f"sel_{phone}")
+            container = c_body
+        else:
+            container = st
+            
+        with container.expander(label=header_text, expanded=False):
             if action_color == "blue": st.info(action_text)
             elif action_color == "green": st.success(action_text)
             elif action_color == "orange": st.warning(action_text)
