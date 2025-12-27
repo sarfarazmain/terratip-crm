@@ -195,7 +195,7 @@ st.divider()
 def big_call_btn(num): return f"""<a href="tel:{num}" class="big-btn call-btn">📞 CALL NOW</a>"""
 def big_wa_btn(num, name): return f"""<a href="https://wa.me/91{num}?text=Namaste {name}" class="big-btn wa-btn" target="_blank">💬 WHATSAPP</a>"""
 
-# --- LIVE FEED (FRAGMENT - FORM REMOVED FOR DYNAMIC DATE PICKER) ---
+# --- LIVE FEED ---
 @st.fragment(run_every=30)
 def show_live_leads_list(users_df, search_q, status_f):
     try: data = leads_sheet.get_all_records(); df = pd.DataFrame(data)
@@ -214,9 +214,8 @@ def show_live_leads_list(users_df, search_q, status_f):
     if search_q: df = df[df.astype(str).apply(lambda x: x.str.contains(search_q, case=False)).any(axis=1)]
     if status_f: df = df[df['Status'].isin(status_f)]
 
-    today = get_ist_date() # IST DATE
+    today = get_ist_date()
     
-    # --- PRIORITY & ALERT LOGIC ---
     def get_priority_data(row):
         status = row.get('Status', '')
         f_col = next((c for c in df.columns if "Follow" in c), None)
@@ -225,13 +224,13 @@ def show_live_leads_list(users_df, search_q, status_f):
         priority = 2
         alert_msg = ""
         
-        if "Naya" in status: priority = 0; alert_msg = "⚡ NEW LEAD"
+        if "Naya" in status: priority = 0; alert_msg = "⚡ NEW"
         elif "Negotiation" in status: priority = 0; alert_msg = "💰 CLOSING"
         elif f_date_str and len(f_date_str) > 5:
             try:
                 f_date = datetime.strptime(f_date_str, "%Y-%m-%d").date()
-                if f_date < today: priority = 0; alert_msg = "🔴 OVERDUE"
-                elif f_date == today: priority = 1; alert_msg = "🟡 DUE TODAY"
+                if f_date < today: priority = 0; alert_msg = "🔴 LATE"
+                elif f_date == today: priority = 1; alert_msg = "🟡 TODAY"
             except: pass
         return priority, alert_msg
 
@@ -266,9 +265,7 @@ def show_live_leads_list(users_df, search_q, status_f):
         if "junk" in val or "invalid" in val or "agent" in val or "faltu" in val: return 8
         return 0
 
-    # --- ACTION BAR LOGIC (FIXED) ---
     def get_pipeline_action(status, f_date_str):
-        # 1. DATE PRIORITY
         if f_date_str and len(str(f_date_str)) > 5:
             try:
                 f_date = datetime.strptime(f_date_str, "%Y-%m-%d").date()
@@ -276,18 +273,16 @@ def show_live_leads_list(users_df, search_q, status_f):
                 if f_date == today: return ("🟡 ACTION: Call Today!", "orange")
             except: pass
 
-        # 2. STATUS PRIORITY
         s = status.lower()
         if "naya" in s: return ("⚡ ACTION: Call Immediately", "blue")
         if "ring" in s or "busy" in s: return ("⏰ ACTION: Retry in 4 hours", "orange")
-        if "later" in s or "baad" in s: return ("📅 ACTION: Set Appointment", "orange")
-        if "interest" in s: return ("💬 ACTION: WhatsApp Brochure", "green")
+        if "later" in s: return ("📅 ACTION: Set Appointment", "orange")
+        if "interest" in s: return ("💬 ACTION: Send Brochure", "green")
         if "schedule" in s: return ("📍 ACTION: Confirm Visit", "green")
         if "visit done" in s or "negotiat" in s: return ("💰 ACTION: Close Deal", "blue")
         if "closed" in s or "booked" in s: return ("🎉 ACTION: Party!", "green")
         if "junk" in s: return ("🗑️ ACTION: Ignore", "red")
-        if "not" in s: return ("📉 ACTION: Ask for Referrals", "grey")
-        return ("❓ ACTION: Update Status", "grey")
+        return ("❓ ACTION: Update", "grey")
 
     for i, row in df.iterrows():
         name = row.get('Client Name', 'Unknown')
@@ -298,6 +293,14 @@ def show_live_leads_list(users_df, search_q, status_f):
         f_col_name = next((c for c in df.columns if "Follow" in c), None)
         f_val = row.get(f_col_name, '') if f_col_name else ''
         
+        # --- DATE FORMATTER FOR HEADER ---
+        date_badge = ""
+        if f_val and len(str(f_val)) > 5:
+            try:
+                d_obj = datetime.strptime(str(f_val), "%Y-%m-%d")
+                date_badge = f" | 🗓️ {d_obj.strftime('%d-%b')}"
+            except: pass
+
         icon = "⚪"
         if "Closed" in status: icon = "🟢"
         elif "Junk" in status or "Not Interest" in status: icon = "🔴"
@@ -308,7 +311,8 @@ def show_live_leads_list(users_df, search_q, status_f):
         alert_text = row.get('Alert', '')
         action_text, action_color = get_pipeline_action(status, str(f_val).strip())
 
-        with st.expander(f"{icon} {alert_text} {name}"):
+        # HEADER NOW INCLUDES DATE BADGE
+        with st.expander(f"{icon} {alert_text} {name} {date_badge}"):
             if action_color == "blue": st.info(action_text)
             elif action_color == "green": st.success(action_text)
             elif action_color == "orange": st.warning(action_text)
@@ -323,12 +327,10 @@ def show_live_leads_list(users_df, search_q, status_f):
             st.markdown(f"**📞 {phone}** | 📌 {row.get('Source', '-')}")
             if st.session_state['role'] == "Manager": st.caption(f"Assigned: {assigned_to}")
 
-            # --- NO FORM: DYNAMIC INTERFACE ---
             st.write("📝 **Status:**")
             default_idx = get_smart_index(status)
             ns = st.selectbox("Status", status_opts, key=f"s_{i}", index=default_idx, label_visibility="collapsed")
             
-            # NOTE HISTORY
             existing_notes = str(row.get('Notes', ''))
             if existing_notes and existing_notes != "nan" and len(existing_notes) > 2:
                 st.markdown(f"<div class='note-history'>{existing_notes}</div>", unsafe_allow_html=True)
@@ -336,14 +338,18 @@ def show_live_leads_list(users_df, search_q, status_f):
             c_u1, c_u2 = st.columns(2)
             new_note = c_u1.text_input("Add New Note", key=f"n_{i}", placeholder="Type here...")
             
-            c_u2.write("📅 Follow-up:")
+            # --- DYNAMIC LABEL LOGIC ---
+            date_label = "📅 Follow-up:"
+            if "Visit" in ns or "Scheduled" in ns:
+                date_label = "📍 **Site Visit Date:**"
+            elif "Ringing" in ns:
+                date_label = "⏰ Next Call:"
+                
+            c_u2.write(date_label)
             
-            # --- DYNAMIC DATE LOGIC ---
-            # Radio for quick pick
             date_option = c_u2.radio("Quick Pick", ["None", "Tom", "3 Days", "Custom"], horizontal=True, key=f"radio_{i}", label_visibility="collapsed")
             
             final_date = None
-            # If Custom selected, SHOW CALENDAR immediately
             if date_option == "Custom":
                 final_date = c_u2.date_input("Select Date", min_value=today, key=f"cd_{i}")
             elif date_option == "Tom":
@@ -358,7 +364,10 @@ def show_live_leads_list(users_df, search_q, status_f):
                 new_assign = st.selectbox("Re-Assign:", all_telecallers, index=u_idx, key=f"a_{i}")
 
             st.write("")
-            if st.button("✅ SAVE UPDATES", key=f"btn_{i}", type="primary", use_container_width=True):
+            # --- BUTTON SWAP LOGIC (GREEN FLASH) ---
+            button_ph = st.empty() # Placeholder
+            
+            if button_ph.button("✅ UPDATE LEAD", key=f"btn_{i}", type="primary", use_container_width=True):
                 try:
                     cell = leads_sheet.find(phone)
                     if not cell:
@@ -366,40 +375,31 @@ def show_live_leads_list(users_df, search_q, status_f):
                     else:
                         r = cell.row
                         h = leads_sheet.row_values(1)
-                        
                         def get_col(name):
                             try: return next(i for i,v in enumerate(h) if name.lower() in v.lower()) + 1
                             except: return None
                         
                         updates = []
-                        
-                        # Status
                         s_idx = get_col("Status") or 8
                         updates.append({'range': gspread.utils.rowcol_to_a1(r, s_idx), 'values': [[ns]]})
                         
-                        # Notes (Append Mode)
                         if new_note:
                             n_idx = get_col("Notes") or 12
                             ts_str = datetime.now(IST).strftime("%d-%b")
-                            # Combine New + Old
                             full_note = f"[{ts_str}] {new_note}\n{existing_notes}"
                             updates.append({'range': gspread.utils.rowcol_to_a1(r, n_idx), 'values': [[full_note]]})
                         
-                        # Date
                         f_idx = get_col("Follow") or 15
                         if final_date: 
                             updates.append({'range': gspread.utils.rowcol_to_a1(r, f_idx), 'values': [[str(final_date)]]})
                         
-                        # Time
                         t_idx = get_col("Last Call") or 10
                         updates.append({'range': gspread.utils.rowcol_to_a1(r, t_idx), 'values': [[get_ist_time()]]})
                         
-                        # Assign
                         if new_assign and new_assign != assigned_to:
                             a_idx = get_col("Assign") or 7
                             updates.append({'range': gspread.utils.rowcol_to_a1(r, a_idx), 'values': [[new_assign]]})
                         
-                        # Count
                         c_idx = get_col("Count")
                         if c_idx:
                             curr = leads_sheet.cell(r, c_idx).value
@@ -407,9 +407,12 @@ def show_live_leads_list(users_df, search_q, status_f):
                             updates.append({'range': gspread.utils.rowcol_to_a1(r, c_idx), 'values': [[val]]})
 
                         leads_sheet.batch_update(updates)
-                        set_feedback(f"✅ Updated {name}")
-                        time.sleep(1)
+                        
+                        # --- SUCCESS ANIMATION ---
+                        button_ph.success("✅ SAVED SUCCESSFULLY!")
+                        time.sleep(0.7) # Pause to let user see green
                         st.rerun()
+                        
                 except Exception as e: st.error(f"Err: {e}")
 
 def show_add_lead_form(users_df):
