@@ -13,21 +13,49 @@ import pytz
 # --- CONFIGURATION ---
 st.set_page_config(page_title="TerraTip CRM", layout="wide", page_icon="🏡", initial_sidebar_state="collapsed")
 
-# --- CUSTOM CSS (PROFESSIONAL LIST STYLE) ---
+# --- CUSTOM CSS (HEADER FIX & CARD ALIGNMENT) ---
 custom_css = """
     <style>
-        /* 1. RESTORE HEADER */
-        header {visibility: visible !important;} 
-        .stAppDeployButton {display: none;}
-        [data-testid="stDecoration"] {display: none;}
+        /* --- 1. HEADER "GHOSTING" (The Fix for the Search Bar) --- */
+        /* Make the top header transparent so it doesn't block the view */
+        header[data-testid="stHeader"] {
+            background-color: transparent !important;
+            border-bottom: none !important; 
+            z-index: 1 !important;
+        }
+        
+        /* Hide the 'Fork', 'GitHub', and 'Three Dots' menu to clean up the top */
+        [data-testid="stToolbar"] {
+            visibility: hidden !important;
+            display: none !important;
+        }
+        
+        /* Hide the colored decoration bar */
+        [data-testid="stDecoration"] {
+            display: none !important;
+        }
+        
+        /* Ensure the Sidebar Toggle (Hamburger/Arrow) is visible and accessible */
+        [data-testid="stSidebarCollapsedControl"] {
+            display: block !important;
+            color: white !important;
+            background-color: rgba(26, 26, 29, 0.8); /* Semi-transparent bg for visibility */
+            border-radius: 50%;
+            padding: 4px;
+        }
 
-        .block-container { padding-top: 1rem !important; }
+        /* Push the Search Bar DOWN so it isn't hidden behind the toggle */
+        .block-container { 
+            padding-top: 4rem !important; 
+            padding-left: 1rem !important;
+            padding-right: 1rem !important;
+        }
 
-        /* 2. CARD BUTTON STYLING (Standardized Left Align) */
+        /* --- 2. CARD BUTTON STYLING (Strict Left Alignment) --- */
         .stButton button {
             width: 100%;
             text-align: left !important;
-            padding: 16px 20px !important; /* Larger touch target */
+            padding: 16px 20px !important;
             border-radius: 12px !important;
             background-color: #1a1a1d; /* Deep premium black */
             border: 1px solid #333;
@@ -35,7 +63,7 @@ custom_css = """
             height: auto !important;
             white-space: pre-wrap !important;
             display: block;
-            margin-bottom: 8px; /* More spacing between cards */
+            margin-bottom: 8px;
             box-shadow: 0 2px 4px rgba(0,0,0,0.2);
         }
         
@@ -45,20 +73,20 @@ custom_css = """
             transform: scale(0.98);
         }
         
-        /* 3. TEXT TYPOGRAPHY INSIDE CARD */
+        /* Force Text inside button to align left */
         .stButton button p {
             font-family: 'Source Sans Pro', sans-serif;
             text-align: left !important;
+            display: block !important;
             width: 100%;
             line-height: 1.5;
         }
 
-        /* 4. POPUP STYLING */
+        /* --- 3. POPUP & UI POLISH --- */
         div[data-testid="stDialog"] {
             border-radius: 16px;
         }
 
-        /* 5. ACTION BUTTONS */
         .big-btn {
             display: block; width: 100%; padding: 14px; text-align: center;
             border-radius: 10px; text-decoration: none; font-weight: 600;
@@ -75,7 +103,7 @@ custom_css = """
             line-height: 1.5;
         }
         
-        /* 6. TAB STYLING */
+        /* Tabs Styling */
         .stTabs [data-baseweb="tab-list"] { gap: 8px; }
         .stTabs [data-baseweb="tab-list"] button {
             border-radius: 20px; padding: 6px 16px; font-size: 13px; font-weight: 600;
@@ -223,7 +251,6 @@ def open_lead_modal(row_dict, users_df):
         val = str(val).lower().strip()
         for i, x in enumerate(opts):
             if x.lower() == val: return i
-        # Map old statuses to new pipeline
         if "price" in val or "location" in val: return opts.index("Lost (Price / Location)")
         if "visit" in val: return opts.index("Site Visit Scheduled")
         if "busy" in val: return opts.index("Ringing / No Response")
@@ -325,9 +352,8 @@ def render_leads(df, users_df, label_prefix="", is_bulk=False):
         icon = get_status_icon(raw_status)
         short_name = name[:20] + ".." if len(name) > 20 else name
         
-        # --- UI LAYOUT FIX: LEFT ALIGN PATTERN ---
-        # Line 1: Name (Big)
-        # Line 2: Icon + Status | Date (Small)
+        # --- UI LAYOUT: STRICT ALIGNMENT ---
+        # Using a clear separator '•' helps visual alignment on mobile
         if display_date:
             label = f"**{short_name}**\n{icon} {display_status}  •  📅 {display_date}"
         else:
@@ -360,6 +386,7 @@ def show_live_leads_list(users_df, search_q, status_f):
                     (df[assign_col_name] == st.session_state['name']) |
                     (df[assign_col_name] == "TC1")]
 
+    # SEARCH OVERRIDE
     if search_q:
         df_search = df[df.astype(str).apply(lambda x: x.str.contains(search_q, case=False)).any(axis=1)]
         st.info(f"🔍 Found {len(df_search)} results")
@@ -395,19 +422,16 @@ def show_live_leads_list(users_df, search_q, status_f):
     f_col_name = next((c for c in df.columns if "Follow" in c), None)
     df['ParsedDate'] = df[f_col_name].apply(parse_f_date) if f_col_name else None
     
-    # --- LOGIC MASKS ---
+    # LOGIC MASKS
     dead_mask = df['Status'].str.contains("Closed|Booked|Junk|Invalid|Agent", case=False, na=False)
-    
-    # STRICT FILTER: Any 'Price' or 'Location' status is RECYCLE, regardless of date
     recycle_mask = df['Status'].str.contains("Lost|Price|Location|Not Interest", case=False, na=False)
     
     date_action_mask = (df['ParsedDate'].notna()) & (df['ParsedDate'] <= today)
     future_mask = (df['ParsedDate'].notna()) & (df['ParsedDate'] > today)
     new_lead_mask = df['Status'].str.contains("Naya|New", case=False, na=False)
     
-    # BUCKET 1: ACTION (Date<=Today OR New) AND NOT (Dead OR Recycle)
+    # BUCKET 1: ACTION
     action_df = df[ (date_action_mask | new_lead_mask) & (~dead_mask) & (~recycle_mask) ].copy()
-    
     def get_sort_priority(row):
         if pd.notna(row['ParsedDate']):
             if row['ParsedDate'] < today: return 0 
@@ -417,11 +441,11 @@ def show_live_leads_list(users_df, search_q, status_f):
         action_df['Priority'] = action_df.apply(get_sort_priority, axis=1)
         action_df = action_df.sort_values(by=['Priority'])
 
-    # BUCKET 2: FUTURE (Date>Today) AND NOT (Dead OR Recycle)
+    # BUCKET 2: FUTURE
     future_df = df[ future_mask & (~dead_mask) & (~recycle_mask) ].copy()
     if not future_df.empty: future_df = future_df.sort_values(by='ParsedDate')
 
-    # BUCKET 3: RECYCLE (Includes Price/Location leads even if they have dates)
+    # BUCKET 3: RECYCLE
     recycle_df = df[ recycle_mask & (~dead_mask) ].copy()
 
     # BUCKET 4: HISTORY
@@ -569,6 +593,8 @@ with st.sidebar:
 
 # --- MAIN SCREEN ---
 if page == "🏠 CRM":
+    # 🔍 Search Bar (Visual Placement Fix)
+    # The padding-top in CSS ensures this sits below the ghosted header
     search_q = st.text_input("🔍 Search Leads", placeholder="Type Name or Phone...", label_visibility="collapsed")
     show_live_leads_list(users_df, search_q, None)
 
