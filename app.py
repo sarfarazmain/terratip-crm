@@ -496,4 +496,61 @@ def show_admin(users_df):
                     name_idx = next((i for i, c in enumerate(cols) if any(x in c for x in ["full_name", "fullname", "name"])), -1)
                     phone_idx = next((i for i, c in enumerate(cols) if any(x in c for x in ["phone", "mobile", "p:"])), -1)
                     
-                    if name_idx
+                    if name_idx == -1 or phone_idx == -1:
+                        st.error("Could not find 'Name' or 'Phone' columns automatically.")
+                    else:
+                        name_col = df_up.columns[name_idx]
+                        phone_col = df_up.columns[phone_idx]
+                        
+                        ignore_list = [
+                            name_col.lower(), phone_col.lower(),
+                            "id", "created_time", "ad_id", "ad_name", "adset_id", "adset_name",
+                            "campaign_id", "campaign_name", "form_id", "form_name", 
+                            "platform", "is_organic", "date", "start_date", "end_date"
+                        ]
+                        
+                        extra_cols = [c for c in df_up.columns if c.lower() not in ignore_list]
+                        raw_existing = leads_sheet.col_values(4); existing_phones_set = {re.sub(r'\D', '', str(p))[-10:] for p in raw_existing}
+                        rows_to_add = []; ts = get_ist_time(); agent_cycle = itertools.cycle(selected_agents)
+                        
+                        for idx, row in df_up.iterrows():
+                            p_raw = str(row[phone_col]); p_clean = re.sub(r'\D', '', p_raw)
+                            if len(p_clean) >= 10:
+                                p_last_10 = p_clean[-10:]
+                                if p_last_10 not in existing_phones_set:
+                                    notes_data = []
+                                    for ec in extra_cols:
+                                        val = str(row[ec]).strip()
+                                        if val and val.lower() != "nan":
+                                            notes_data.append(f"{ec}: {val}")
+                                    final_note = " | ".join(notes_data)
+                                    
+                                    new_id = generate_lead_id(); assigned_person = next(agent_cycle)
+                                    new_row = [new_id, ts, row[name_col], p_clean, "Meta Ads", "", assigned_person, "Naya Lead", "", ts, "", final_note, "", "", ""]
+                                    rows_to_add.append(new_row); existing_phones_set.add(p_last_10)
+                        
+                        if rows_to_add: leads_sheet.append_rows(rows_to_add); set_feedback(f"✅ Added {len(rows_to_add)} leads!"); time.sleep(1); st.rerun()
+                except Exception as e: st.error(f"Processing Error: {e}")
+
+    with c2:
+        st.subheader("Team List")
+        st.dataframe(users_df[['Name','Username','Role']], hide_index=True)
+        opts = [x for x in users_df['Username'].unique() if x != st.session_state['username']]
+        if opts:
+            dt = st.selectbox("Delete", opts)
+            if st.button("❌ Delete"): users_sheet.delete_rows(users_sheet.find(dt).row); set_feedback(f"Deleted {dt}"); st.rerun()
+
+def show_dashboard(users_df):
+    show_feedback(); show_add_lead_form(users_df); st.divider()
+    c_search, c_filter = st.columns([2, 1])
+    search_q = c_search.text_input("🔍 Search", placeholder="Name / Phone", key="search_q")
+    show_live_leads_list(users_df, search_q, None)
+
+# --- EXECUTION ---
+if st.session_state['role'] == "Manager":
+    t1, t2, t3 = st.tabs(["🏠 CRM", "📊 Insights", "⚙️ Admin"])
+    with t1: show_dashboard(users_df)
+    with t2: show_master_insights()
+    with t3: show_admin(users_df)
+else:
+    show_dashboard(users_df)
