@@ -13,7 +13,7 @@ import pytz
 # --- CONFIGURATION ---
 st.set_page_config(page_title="TerraTip CRM", layout="wide", page_icon="🏡")
 
-# --- CUSTOM CSS (THE FLOAT FIX) ---
+# --- CUSTOM CSS ---
 custom_css = """
     <style>
         header {visibility: hidden;}
@@ -23,7 +23,7 @@ custom_css = """
         
         .block-container { padding-top: 0.5rem !important; }
 
-        /* --- HEADER CONTAINER --- */
+        /* HEADER & EXPANDER STYLING */
         .streamlit-expanderHeader {
             background-color: #262730 !important;
             border: 1px solid #444 !important;
@@ -34,100 +34,50 @@ custom_css = """
             font-family: 'Roboto', sans-serif;
             font-size: 15px !important;
         }
-        
-        /* Ensure the paragraph takes full width */
-        .streamlit-expanderHeader p {
-            width: 100%;
-            margin: 0;
-            display: block; /* Block display allows floating */
-        }
-
-        /* 1. BADGE (Bold Text) */
+        .streamlit-expanderHeader p { width: 100%; margin: 0; display: block; }
         .streamlit-expanderHeader strong {
-            display: inline-block;
-            min-width: 80px;
-            text-align: center;
-            background: #333;
-            color: #fff;
-            padding: 2px 6px;
-            border-radius: 4px;
-            font-weight: 700;
-            font-size: 12px;
-            margin-right: 10px;
-            border: 1px solid #555;
-            vertical-align: middle;
+            display: inline-block; min-width: 80px; text-align: center;
+            background: #333; color: #fff; padding: 2px 6px;
+            border-radius: 4px; font-weight: 700; font-size: 12px;
+            margin-right: 10px; border: 1px solid #555; vertical-align: middle;
         }
-
-        /* 2. TAGS (Code Text) */
         .streamlit-expanderHeader code {
-            font-family: sans-serif;
-            font-size: 11px;
-            background: #444;
-            color: #ccc;
-            padding: 2px 5px;
-            border-radius: 3px;
-            margin-left: 6px;
-            border: none;
-            vertical-align: middle;
+            font-family: sans-serif; font-size: 11px; background: #444;
+            color: #ccc; padding: 2px 5px; border-radius: 3px;
+            margin-left: 6px; border: none; vertical-align: middle;
         }
-
-        /* 3. TIME (Italic Text) - THE FLOAT RIGHT FIX */
         .streamlit-expanderHeader em {
-            float: right; /* <--- THIS IS THE KEY */
-            font-style: normal;
-            font-size: 12px;
-            color: #aaa;
-            background: #1e1e1e; /* Slight background for contrast */
-            padding: 2px 6px;
-            border-radius: 4px;
-            margin-top: 2px; /* Slight alignment tweak */
+            float: right; font-style: normal; font-size: 12px; color: #aaa;
+            background: #1e1e1e; padding: 2px 6px; border-radius: 4px; margin-top: 2px;
         }
 
-        /* ACTION BUTTONS */
+        /* BUTTONS */
         .big-btn {
-            display: block;
-            width: 100%;
-            padding: 10px; 
-            text-align: center;
-            border-radius: 6px;
-            text-decoration: none;
-            font-weight: 700;
-            font-size: 14px;
-            letter-spacing: 0.5px;
-            margin-bottom: 10px;
+            display: block; width: 100%; padding: 10px; text-align: center;
+            border-radius: 6px; text-decoration: none; font-weight: 700;
+            font-size: 14px; letter-spacing: 0.5px; margin-bottom: 10px;
             box-shadow: 0 2px 4px rgba(0,0,0,0.2);
         }
         .call-btn { background-color: #28a745; color: white !important; }
         .wa-btn { background-color: #25D366; color: white !important; }
         
         .note-history {
-            font-size: 12px;
-            color: #bbb;
-            background: #121212;
-            padding: 10px;
-            border-radius: 6px;
-            max-height: 80px;
-            overflow-y: auto;
-            margin-bottom: 10px;
-            border-left: 3px solid #555;
+            font-size: 12px; color: #bbb; background: #121212;
+            padding: 10px; border-radius: 6px; max-height: 80px;
+            overflow-y: auto; margin-bottom: 10px; border-left: 3px solid #555;
         }
         
         div[role="radiogroup"] > label {
-            padding: 5px 10px;
-            background: #1e1e1e;
-            border: 1px solid #333;
-            border-radius: 4px;
-            font-size: 14px;
+            padding: 5px 10px; background: #1e1e1e;
+            border: 1px solid #333; border-radius: 4px; font-size: 14px;
         }
-        
         [data-testid="stCheckbox"] { margin-top: 12px; }
     </style>
 """
 st.markdown(custom_css, unsafe_allow_html=True)
 
-# --- TIMEZONE SETUP (IST) ---
+# --- TIMEZONE ---
 IST = pytz.timezone('Asia/Kolkata')
-
 def get_ist_time(): return datetime.now(IST).strftime("%Y-%m-%d %H:%M")
 def get_ist_date(): return datetime.now(IST).date()
 
@@ -142,7 +92,6 @@ def show_feedback():
         typ = st.session_state.get('feedback_type', 'success')
         if typ == "success": st.toast(msg, icon="✅"); st.success(msg, icon="✅")
         elif typ == "error": st.toast(msg, icon="❌"); st.error(msg, icon="❌")
-        elif typ == "warning": st.toast(msg, icon="⚠️"); st.warning(msg, icon="⚠️")
         st.session_state['feedback_msg'] = None
 
 # --- DATABASE ---
@@ -168,13 +117,6 @@ def init_auth_system(sh):
         ws.append_row(["admin", hash_pass("admin123"), "Manager", "System Admin"])
     return ws
 
-def robust_update(sheet, phone_number, col_index, value):
-    try:
-        cell = sheet.find(phone_number)
-        if cell: sheet.update_cell(cell.row, col_index, value); return True, "Updated"
-        return False, "Lead not found"
-    except Exception as e: return False, str(e)
-
 def generate_lead_id(prefix="L"):
     ts = str(int(time.time()))[-6:] 
     rand = str(random.randint(10, 99))
@@ -186,11 +128,9 @@ def get_time_ago(last_call_str):
     except:
         try: last_dt = datetime.strptime(str(last_call_str).strip(), "%Y-%m-%d")
         except: return "-"
-    
     if last_dt.tzinfo is None: last_dt = IST.localize(last_dt)
     now = datetime.now(IST)
     diff = now - last_dt
-    
     if diff.days == 0:
         hrs = diff.seconds // 3600
         if hrs == 0: return "Now"
@@ -269,37 +209,72 @@ def show_live_leads_list(users_df, search_q, status_f):
 
     today = get_ist_date()
     
-    # --- BULK LABELING ---
+    # --- BULK ACTIONS (Manager Only) ---
     is_bulk_mode = False
     if st.session_state['role'] == "Manager":
         c_bulk_switch, c_bulk_input = st.columns([1, 3])
-        is_bulk_mode = c_bulk_switch.toggle("🏷️ Bulk Labeling Mode")
+        is_bulk_mode = c_bulk_switch.toggle("⚡ Bulk Actions Mode")
+        
         if is_bulk_mode:
             with c_bulk_input:
-                b_col1, b_col2 = st.columns([2, 1])
-                tag_to_apply = b_col1.text_input("New Label Name", placeholder="e.g. Warm", label_visibility="collapsed")
-                if b_col2.button("Apply", type="primary"):
-                    if not tag_to_apply: st.error("Type label.")
-                    else:
-                        selected_phones = [str(row['Phone']).replace(',', '').replace('.', '') for idx, row in df.iterrows() if st.session_state.get(f"sel_{str(row['Phone']).replace(',', '').replace('.', '')}", False)]
-                        if not selected_phones: st.warning("No leads checked.")
+                bk_t1, bk_t2 = st.tabs(["🏷️ Apply Label", "🗑️ Delete Leads"])
+                
+                # TAB 1: LABELING
+                with bk_t1:
+                    b_col1, b_col2 = st.columns([2, 1])
+                    tag_to_apply = b_col1.text_input("New Label", placeholder="e.g. Hot", label_visibility="collapsed")
+                    if b_col2.button("Apply Label", type="primary"):
+                        if not tag_to_apply: st.error("Type label.")
                         else:
-                            try:
-                                h = leads_sheet.row_values(1)
-                                try: t_idx = next(i for i,v in enumerate(h) if "Tag" in v or "Label" in v) + 1
-                                except: st.error("❌ 'Tags' column missing."); t_idx = None
-                                if t_idx:
-                                    all_records = leads_sheet.get_all_values()
-                                    updates = []
-                                    for p in selected_phones:
-                                        r_idx = -1
-                                        for i, row in enumerate(all_records):
-                                            if str(row[3]).replace('.0','') == str(p): r_idx = i + 1; break
-                                        if r_idx != -1: updates.append({'range': gspread.utils.rowcol_to_a1(r_idx, t_idx), 'values': [[tag_to_apply]]})
-                                    if updates: leads_sheet.batch_update(updates); set_feedback(f"✅ Applied!"); time.sleep(1); st.rerun()
-                            except Exception as e: st.error(f"Err: {e}")
+                            selected_phones = [str(row['Phone']).replace(',', '').replace('.', '') for idx, row in df.iterrows() if st.session_state.get(f"sel_{str(row['Phone']).replace(',', '').replace('.', '')}", False)]
+                            if not selected_phones: st.warning("No leads checked.")
+                            else:
+                                try:
+                                    h = leads_sheet.row_values(1)
+                                    try: t_idx = next(i for i,v in enumerate(h) if "Tag" in v or "Label" in v) + 1
+                                    except: st.error("❌ 'Tags' column missing."); t_idx = None
+                                    if t_idx:
+                                        all_records = leads_sheet.get_all_values()
+                                        updates = []
+                                        for p in selected_phones:
+                                            r_idx = -1
+                                            for i, row in enumerate(all_records):
+                                                if str(row[3]).replace('.0','') == str(p): r_idx = i + 1; break
+                                            if r_idx != -1: updates.append({'range': gspread.utils.rowcol_to_a1(r_idx, t_idx), 'values': [[tag_to_apply]]})
+                                        if updates: leads_sheet.batch_update(updates); set_feedback(f"✅ Applied!"); time.sleep(1); st.rerun()
+                                except Exception as e: st.error(f"Err: {e}")
 
-    # --- LEAD DATA ---
+                # TAB 2: DELETE (NEW FEATURE)
+                with bk_t2:
+                    st.warning("⚠️ Action cannot be undone.")
+                    d_col1, d_col2 = st.columns([2, 1])
+                    confirm_txt = d_col1.text_input("Type DELETE to confirm", placeholder="DELETE", label_visibility="collapsed")
+                    if d_col2.button("🗑️ Delete Selected", type="primary"):
+                        if confirm_txt != "DELETE":
+                            st.error("Please type DELETE exactly.")
+                        else:
+                            selected_phones = [str(row['Phone']).replace(',', '').replace('.', '') for idx, row in df.iterrows() if st.session_state.get(f"sel_{str(row['Phone']).replace(',', '').replace('.', '')}", False)]
+                            if not selected_phones: st.warning("No leads selected.")
+                            else:
+                                try:
+                                    all_records = leads_sheet.get_all_values()
+                                    rows_to_delete = []
+                                    for p in selected_phones:
+                                        for i, row in enumerate(all_records):
+                                            if str(row[3]).replace('.0','') == str(p):
+                                                rows_to_delete.append(i + 1)
+                                                break
+                                    
+                                    if rows_to_delete:
+                                        rows_to_delete.sort(reverse=True)
+                                        for r in rows_to_delete:
+                                            leads_sheet.delete_rows(r)
+                                        set_feedback(f"✅ Deleted {len(rows_to_delete)} leads."); time.sleep(1); st.rerun()
+                                    else:
+                                        st.warning("Could not find rows to delete.")
+                                except Exception as e: st.error(f"Delete Error: {e}")
+
+    # --- LEAD LIST RENDERING ---
     def get_lead_meta(row):
         status = str(row.get('Status', '')).strip()
         f_col = next((c for c in df.columns if "Follow" in c), None)
@@ -310,10 +285,8 @@ def show_live_leads_list(users_df, search_q, status_f):
         
         tag_col = next((c for c in df.columns if "Tag" in c or "Label" in c), None)
         tag_val = str(row.get(tag_col, '')).strip() if tag_col else ""
-        # USE CODE BLOCK SYNTAX FOR TAGS
         tag_display = f"`{tag_val}`" if tag_val else ""
         
-        # Truncate Name
         raw_name = str(row.get('Client Name', 'Unknown'))
         name_display = raw_name[:20] + ".." if len(raw_name) > 20 else raw_name
         
@@ -383,11 +356,6 @@ def show_live_leads_list(users_df, search_q, status_f):
         status = str(row.get('Status', 'Naya Lead')).strip()
         action_text, action_color = get_pipeline_action(status, str(f_val).strip())
 
-        # --- FINAL HEADER: PURE MARKDOWN ---
-        # **Bold** = Badge
-        # Name = Plain Text
-        # `Code` = Tag
-        # *Italic* = Time
         header_text = f"**{row['Icon']} {row['Badge']}** {row['ShortName']} {row['TagText']} *{row['Ago']}*"
         
         container = st
@@ -483,6 +451,9 @@ def show_add_lead_form(users_df):
         c3, c4 = st.columns(2)
         src = c3.selectbox("Source", ["Meta Ads", "Canopy", "Agent", "Others"])
         ag = c4.text_input("Agent Name") if src == "Agent" else ""
+        
+        extra_notes = st.text_area("Notes / Instant Form Answers")
+        
         assign = st.session_state['username']
         if st.session_state['role'] == "Manager":
             all_u = users_df['Username'].tolist()
@@ -498,7 +469,7 @@ def show_add_lead_form(users_df):
                     if clean_new in clean_existing: st.error(f"⚠️ Duplicate! {phone} already exists.")
                     else:
                         ts = get_ist_time(); new_id = generate_lead_id()
-                        row_data = [new_id, ts, name, phone, src, ag, assign, "Naya Lead", "", ts, "", "", "", "", ""] 
+                        row_data = [new_id, ts, name, phone, src, ag, assign, "Naya Lead", "", ts, "", extra_notes, "", "", ""] 
                         leads_sheet.append_row(row_data)
                         set_feedback(f"✅ Saved {name}"); st.rerun()
                 except Exception as e: st.error(f"Err: {e}")
@@ -529,7 +500,6 @@ def show_master_insights():
             stats.append({"User": user, "Total": len(user_df), "⚠️ Pending": pending, "🔥 Active": working, "🎉 Sold": sold_count, "🕒 Last Active": last_active})
         if stats: st.dataframe(pd.DataFrame(stats), use_container_width=True, hide_index=True)
         else: st.info("No activity yet.")
-    else: st.error(f"⚠️ System Error: Could not find 'Assigned' column.")
 
 def show_admin(users_df):
     st.header("⚙️ Admin")
@@ -545,7 +515,7 @@ def show_admin(users_df):
                 else: users_sheet.append_row([u, hash_pass(p), r, n]); set_feedback(f"✅ Created {u}"); st.rerun()
         
         st.divider()
-        st.subheader("📥 Bulk Upload (Auto-Distribute)")
+        st.subheader("📥 Bulk Upload (Meta CSV)")
         telecaller_list = users_df[users_df['Role'].isin(['Telecaller', 'Sales Specialist', 'Manager'])]['Username'].tolist()
         selected_agents = st.multiselect("Assign Leads To:", telecaller_list, default=telecaller_list)
         uploaded_file = st.file_uploader("Choose CSV File", type=['csv'])
@@ -557,27 +527,52 @@ def show_admin(users_df):
                     except: 
                         try: uploaded_file.seek(0); df_up = pd.read_csv(uploaded_file, encoding='utf-16', sep='\t')
                         except: uploaded_file.seek(0); df_up = pd.read_csv(uploaded_file, encoding='ISO-8859-1')
+                    
+                    # 1. FIND NAME/PHONE
                     cols = [c.lower() for c in df_up.columns]
-                    name_idx = -1
-                    for i, c in enumerate(cols):
-                        if "full_name" in c or "fullname" in c: name_idx = i; break
-                    if name_idx == -1:
-                        for i, c in enumerate(cols):
-                            if "name" in c and "ad" not in c and "form" not in c and "campaign" not in c: name_idx = i; break
-                    if name_idx == -1: name_idx = next((i for i, c in enumerate(cols) if "name" in c), 0)
-                    phone_idx = next((i for i, c in enumerate(cols) if "phone" in c or "mobile" in c or "p:" in c), 1)
-                    name_col = df_up.columns[name_idx]; phone_col = df_up.columns[phone_idx]
-                    raw_existing = leads_sheet.col_values(4); existing_phones_set = {re.sub(r'\D', '', str(p))[-10:] for p in raw_existing}
-                    rows_to_add = []; ts = get_ist_time(); agent_cycle = itertools.cycle(selected_agents)
-                    for idx, row in df_up.iterrows():
-                        p_raw = str(row[phone_col]); p_clean = re.sub(r'\D', '', p_raw)
-                        if len(p_clean) >= 10:
-                            p_last_10 = p_clean[-10:]
-                            if p_last_10 not in existing_phones_set:
-                                new_id = generate_lead_id(); assigned_person = next(agent_cycle)
-                                new_row = [new_id, ts, row[name_col], p_clean, "Meta Ads", "", assigned_person, "Naya Lead", "", ts, "", "", "", "", ""]
-                                rows_to_add.append(new_row); existing_phones_set.add(p_last_10)
-                    if rows_to_add: leads_sheet.append_rows(rows_to_add); set_feedback(f"✅ Added {len(rows_to_add)} leads!"); time.sleep(1); st.rerun()
+                    name_idx = next((i for i, c in enumerate(cols) if any(x in c for x in ["full_name", "fullname", "name"])), -1)
+                    phone_idx = next((i for i, c in enumerate(cols) if any(x in c for x in ["phone", "mobile", "p:"])), -1)
+                    
+                    if name_idx == -1 or phone_idx == -1:
+                        st.error("Could not find 'Name' or 'Phone' columns automatically.")
+                    else:
+                        name_col = df_up.columns[name_idx]
+                        phone_col = df_up.columns[phone_idx]
+                        
+                        # 2. FILTER OUT JUNK COLUMNS
+                        # We specifically block standard Meta/Facebook columns
+                        ignore_list = [
+                            name_col.lower(), phone_col.lower(),
+                            "id", "created_time", "ad_id", "ad_name", "adset_id", "adset_name",
+                            "campaign_id", "campaign_name", "form_id", "form_name", 
+                            "platform", "is_organic", "date", "start_date", "end_date"
+                        ]
+                        
+                        # Keep only columns that are NOT in the ignore list
+                        extra_cols = [c for c in df_up.columns if c.lower() not in ignore_list]
+
+                        raw_existing = leads_sheet.col_values(4); existing_phones_set = {re.sub(r'\D', '', str(p))[-10:] for p in raw_existing}
+                        rows_to_add = []; ts = get_ist_time(); agent_cycle = itertools.cycle(selected_agents)
+                        
+                        for idx, row in df_up.iterrows():
+                            p_raw = str(row[phone_col]); p_clean = re.sub(r'\D', '', p_raw)
+                            if len(p_clean) >= 10:
+                                p_last_10 = p_clean[-10:]
+                                if p_last_10 not in existing_phones_set:
+                                    # Collect ONLY clean answers for Notes
+                                    notes_data = []
+                                    for ec in extra_cols:
+                                        val = str(row[ec]).strip()
+                                        if val and val.lower() != "nan":
+                                            # Format: "Question: Answer"
+                                            notes_data.append(f"{ec}: {val}")
+                                    final_note = " | ".join(notes_data)
+                                    
+                                    new_id = generate_lead_id(); assigned_person = next(agent_cycle)
+                                    new_row = [new_id, ts, row[name_col], p_clean, "Meta Ads", "", assigned_person, "Naya Lead", "", ts, "", final_note, "", "", ""]
+                                    rows_to_add.append(new_row); existing_phones_set.add(p_last_10)
+                        
+                        if rows_to_add: leads_sheet.append_rows(rows_to_add); set_feedback(f"✅ Added {len(rows_to_add)} leads!"); time.sleep(1); st.rerun()
                 except Exception as e: st.error(f"Processing Error: {e}")
 
     with c2:
