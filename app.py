@@ -201,7 +201,7 @@ def render_leads(df, users_df, label_prefix=""):
     Renders a dataframe of leads with standard UI.
     """
     if df.empty:
-        st.info("✅ All caught up! No leads here.")
+        st.info("✅ No leads in this section.")
         return
 
     status_opts = ["Naya Lead", "Ringing / Busy / No Answer", "Asked to Call Later", "Interested (Send Details)", "Site Visit Scheduled", "Visit Done (Negotiation)", "Sale Closed / Booked", "Not Interested / Price / Location", "Junk / Invalid / Agent"]
@@ -219,7 +219,7 @@ def render_leads(df, users_df, label_prefix=""):
         if f_date_str and len(str(f_date_str)) > 5:
             try:
                 f_date = datetime.strptime(f_date_str, "%Y-%m-%d").date()
-                if f_date < today: return ("🔴 OVERDUE", "red") # New Priority
+                if f_date < today: return ("🔴 OVERDUE", "red")
                 if f_date == today: return ("🟡 Call Today!", "orange")
                 if f_date > today: return (f"📅 {f_date.strftime('%d-%b')}", "green")
             except: pass
@@ -231,7 +231,6 @@ def render_leads(df, users_df, label_prefix=""):
 
     for i, row in df.iterrows():
         phone = str(row.get('Phone', '')).replace(',', '').replace('.', '')
-        # Assign unique key based on phone and tab label to prevent duplicate key errors if logic overlaps
         key_suffix = f"{label_prefix}_{phone}" 
         
         assign_col_name = next((c for c in df.columns if "assign" in c.lower()), None)
@@ -242,7 +241,6 @@ def render_leads(df, users_df, label_prefix=""):
         status = str(row.get('Status', 'Naya Lead')).strip()
         action_text, action_color = get_pipeline_action(status, str(f_val).strip())
 
-        # Header Metadata
         t_col = next((c for c in df.columns if "Last Call" in c), None)
         t_val = str(row.get(t_col, '')).strip() if t_col else ""
         ago = get_time_ago(t_val)
@@ -254,16 +252,14 @@ def render_leads(df, users_df, label_prefix=""):
         raw_name = str(row.get('Client Name', 'Unknown'))
         name_display = raw_name[:20] + ".." if len(raw_name) > 20 else raw_name
         
-        # Simple Badge logic for display
         badge_icon = "⚪"
         if "naya" in status.lower(): badge_icon="⚡"
         elif "visit" in status.lower(): badge_icon="📍"
-        elif action_color == "red": badge_icon="🔴" # Overdue
+        elif action_color == "red": badge_icon="🔴"
         
         header_text = f"**{badge_icon}** {name_display} {tag_display} *{ago}*"
         
         with st.expander(label=header_text, expanded=False):
-            # Banner
             if action_color == "blue": st.info(action_text)
             elif action_color == "green": st.success(action_text)
             elif action_color == "orange": st.warning(action_text)
@@ -324,8 +320,6 @@ def render_leads(df, users_df, label_prefix=""):
                             updates.append({'range': gspread.utils.rowcol_to_a1(r, n_idx), 'values': [[full_note]]})
                         
                         f_idx = get_col("Follow") or 15
-                        # Logic: If they picked a date, save it. If they picked "None" explicitly (or switched status to closed), maybe clear it?
-                        # For now, we only update if a date is selected.
                         if final_date: updates.append({'range': gspread.utils.rowcol_to_a1(r, f_idx), 'values': [[str(final_date)]]})
                         
                         t_idx = get_col("Last Call") or 10
@@ -346,7 +340,7 @@ def render_leads(df, users_df, label_prefix=""):
                         time.sleep(0.5); st.rerun()
                 except Exception as e: st.error(f"Err: {e}")
 
-# --- LIVE FEED (UPDATED LOGIC) ---
+# --- LIVE FEED (UPDATED 4-TAB LOGIC) ---
 @st.fragment(run_every=30)
 def show_live_leads_list(users_df, search_q, status_f):
     try: data = leads_sheet.get_all_records(); df = pd.DataFrame(data)
@@ -362,82 +356,91 @@ def show_live_leads_list(users_df, search_q, status_f):
                     (df[assign_col_name] == st.session_state['name']) |
                     (df[assign_col_name] == "TC1")]
 
-    # 2. Global Search Override (If searching, show everything matching)
+    # 2. Global Search Override
     if search_q:
         df_search = df[df.astype(str).apply(lambda x: x.str.contains(search_q, case=False)).any(axis=1)]
         st.info(f"🔍 Found {len(df_search)} results for '{search_q}'")
         render_leads(df_search, users_df, "search")
-        return # Stop here if searching
+        return
 
     # 3. SEGMENTATION LOGIC
     today = get_ist_date()
     
-    # Helper to parse date
     def parse_f_date(val):
         if not val or len(str(val)) < 5: return None
         try: return datetime.strptime(str(val).strip(), "%Y-%m-%d").date()
         except: return None
 
-    # Add parsed date column
     f_col_name = next((c for c in df.columns if "Follow" in c), None)
     df['ParsedDate'] = df[f_col_name].apply(parse_f_date) if f_col_name else None
     
-    # BUCKET 1: ACTION REQUIRED (Today + Overdue + New)
-    # Logic:
-    # - Date is NOT NULL AND Date <= Today (Overdue + Today)
-    # - OR Status contains "Naya" or "New" (Fresh Leads)
-    # - Exclude Closed/Junk/Not Interested
+    # DEFINE STATUS GROUPS
+    # A. Dead/Closed
+    dead_mask = df['Status'].str.contains("Closed|Booked|Junk|Invalid|Agent", case=False, na=False)
     
-    junk_mask = df['Status'].str.contains("Closed|Booked|Junk|Invalid|Not Interest", case=False, na=False)
+    # B. Recycle (Price / Location) - BUT only if they don't have a future date set!
+    recycle_mask = df['Status'].str.contains("Price|Location|Not Interest", case=False, na=False)
     
-    # Overdue or Today
+    # C. Date Based (Action vs Future)
     date_action_mask = (df['ParsedDate'].notna()) & (df['ParsedDate'] <= today)
+    future_mask = (df['ParsedDate'].notna()) & (df['ParsedDate'] > today)
     
-    # New Leads (No date usually, specific status)
+    # D. New Leads
     new_lead_mask = df['Status'].str.contains("Naya|New", case=False, na=False)
     
-    # Combine: (DateAction OR New) AND NOT Junk
-    action_df = df[ (date_action_mask | new_lead_mask) & (~junk_mask) ].copy()
+    # --- ASSIGNING LEADS TO BUCKETS ---
     
-    # Sort Action DF: Overdue first, then Today, then New
+    # BUCKET 1: ACTION (Date <= Today OR New Leads) AND NOT Dead
+    # Note: If a lead is "Price Issue" but I set a follow-up for today, it should appear in ACTION, not Recycle.
+    action_df = df[ (date_action_mask | new_lead_mask) & (~dead_mask) ].copy()
+    
+    # Sorting Action
     def get_sort_priority(row):
         if pd.notna(row['ParsedDate']):
-            if row['ParsedDate'] < today: return 0 # Overdue (Highest)
+            if row['ParsedDate'] < today: return 0 # Overdue
             return 1 # Today
-        return 2 # New Leads
-    
+        return 2 # New
     if not action_df.empty:
         action_df['Priority'] = action_df.apply(get_sort_priority, axis=1)
         action_df = action_df.sort_values(by=['Priority'])
 
-    # BUCKET 2: FUTURE (Tomorrow onwards)
-    future_mask = (df['ParsedDate'].notna()) & (df['ParsedDate'] > today) & (~junk_mask)
-    future_df = df[future_mask].copy()
+    # BUCKET 2: FUTURE (Date > Today) AND NOT Dead
+    future_df = df[ future_mask & (~dead_mask) ].copy()
     if not future_df.empty:
         future_df = future_df.sort_values(by='ParsedDate')
 
-    # BUCKET 3: HISTORY (Closed, Junk, or No Date & Not New)
-    # Everything else essentially
-    history_mask = junk_mask | ((~date_action_mask) & (~new_lead_mask) & (~future_mask))
+    # BUCKET 3: RECYCLE / MISMATCH
+    # Logic: Status is Price/Location, AND Date is NULL (active concern addressed), AND Not Dead
+    recycle_df = df[ recycle_mask & (df['ParsedDate'].isna()) & (~dead_mask) & (~new_lead_mask) ].copy()
+
+    # BUCKET 4: HISTORY / CLOSED
+    # Logic: Dead/Closed/Junk OR (Status=Price/Loc/Other but no date and not captured by recycle?)
+    # Basically anything left over.
+    history_mask = dead_mask | ( (~date_action_mask) & (~new_lead_mask) & (~future_mask) & (~recycle_mask) )
     history_df = df[history_mask].copy()
 
     # --- RENDER TABS ---
-    tab1, tab2, tab3 = st.tabs([
-        f"🔥 Action Required ({len(action_df)})", 
-        f"📅 Future / Waiting ({len(future_df)})",
-        f"✅ History / Closed ({len(history_df)})"
+    tab1, tab2, tab3, tab4 = st.tabs([
+        f"🔥 Action ({len(action_df)})", 
+        f"📅 Waiting ({len(future_df)})",
+        f"♻️ Recycle ({len(recycle_df)})",
+        f"❌ Closed ({len(history_df)})"
     ])
 
     with tab1:
-        st.caption("Focus on clearing this list daily. (Overdue → Today → New)")
+        st.caption("Calls to make NOW (Overdue, Today, New).")
         render_leads(action_df, users_df, "action")
         
     with tab2:
-        st.caption("Leads scheduled for later. Relax, no action needed now.")
+        st.caption("Scheduled for later.")
         render_leads(future_df, users_df, "future")
         
     with tab3:
-        st.caption("Leads marked as Closed, Junk, or Idle.")
+        st.caption("💎 Mismatch leads (Price/Location). Retarget them for future projects.")
+        render_leads(recycle_df, users_df, "recycle")
+        
+    with tab4:
+        st.caption("Closed deals, agents, and junk data.")
         render_leads(history_df, users_df, "history")
 
 def show_add_lead_form(users_df):
