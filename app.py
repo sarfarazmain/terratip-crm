@@ -72,6 +72,12 @@ custom_css = """
             border: 1px solid #333; border-radius: 4px; font-size: 14px;
         }
         [data-testid="stCheckbox"] { margin-top: 12px; }
+        
+        /* TABS STYLING */
+        .stTabs [data-baseweb="tab-list"] button [data-testid="stMarkdownContainer"] p {
+            font-size: 16px;
+            font-weight: bold;
+        }
     </style>
 """
 st.markdown(custom_css, unsafe_allow_html=True)
@@ -189,144 +195,18 @@ st.divider()
 def big_call_btn(num): return f"""<a href="tel:{num}" class="big-btn call-btn">📞 CALL NOW</a>"""
 def big_wa_btn(num, name): return f"""<a href="https://wa.me/91{num}?text=Namaste {name}" class="big-btn wa-btn" target="_blank">💬 WHATSAPP</a>"""
 
-# --- LIVE FEED ---
-@st.fragment(run_every=30)
-def show_live_leads_list(users_df, search_q, status_f):
-    try: data = leads_sheet.get_all_records(); df = pd.DataFrame(data)
-    except: return
+# --- REUSABLE LEAD RENDERER ---
+def render_leads(df, users_df, label_prefix=""):
+    """
+    Renders a dataframe of leads with standard UI.
+    """
+    if df.empty:
+        st.info("✅ All caught up! No leads here.")
+        return
 
-    df.columns = df.columns.astype(str).str.strip()
-    assign_col_name = next((c for c in df.columns if "assign" in c.lower()), None)
-
-    if st.session_state['role'] == "Telecaller":
-        if assign_col_name:
-            df = df[(df[assign_col_name] == st.session_state['username']) | 
-                    (df[assign_col_name] == st.session_state['name']) |
-                    (df[assign_col_name] == "TC1")]
-
-    if search_q: df = df[df.astype(str).apply(lambda x: x.str.contains(search_q, case=False)).any(axis=1)]
-    if status_f: df = df[df['Status'].isin(status_f)]
-
-    today = get_ist_date()
-    
-    # --- BULK ACTIONS (Manager Only) ---
-    is_bulk_mode = False
-    if st.session_state['role'] == "Manager":
-        c_bulk_switch, c_bulk_input = st.columns([1, 3])
-        is_bulk_mode = c_bulk_switch.toggle("⚡ Bulk Actions Mode")
-        
-        if is_bulk_mode:
-            with c_bulk_input:
-                bk_t1, bk_t2 = st.tabs(["🏷️ Apply Label", "🗑️ Delete Leads"])
-                
-                # TAB 1: LABELING
-                with bk_t1:
-                    b_col1, b_col2 = st.columns([2, 1])
-                    tag_to_apply = b_col1.text_input("New Label", placeholder="e.g. Hot", label_visibility="collapsed")
-                    if b_col2.button("Apply Label", type="primary"):
-                        if not tag_to_apply: st.error("Type label.")
-                        else:
-                            selected_phones = [str(row['Phone']).replace(',', '').replace('.', '') for idx, row in df.iterrows() if st.session_state.get(f"sel_{str(row['Phone']).replace(',', '').replace('.', '')}", False)]
-                            if not selected_phones: st.warning("No leads checked.")
-                            else:
-                                try:
-                                    h = leads_sheet.row_values(1)
-                                    try: t_idx = next(i for i,v in enumerate(h) if "Tag" in v or "Label" in v) + 1
-                                    except: st.error("❌ 'Tags' column missing."); t_idx = None
-                                    if t_idx:
-                                        all_records = leads_sheet.get_all_values()
-                                        updates = []
-                                        for p in selected_phones:
-                                            r_idx = -1
-                                            for i, row in enumerate(all_records):
-                                                if str(row[3]).replace('.0','') == str(p): r_idx = i + 1; break
-                                            if r_idx != -1: updates.append({'range': gspread.utils.rowcol_to_a1(r_idx, t_idx), 'values': [[tag_to_apply]]})
-                                        if updates: leads_sheet.batch_update(updates); set_feedback(f"✅ Applied!"); time.sleep(1); st.rerun()
-                                except Exception as e: st.error(f"Err: {e}")
-
-                # TAB 2: DELETE (NEW FEATURE)
-                with bk_t2:
-                    st.warning("⚠️ Action cannot be undone.")
-                    d_col1, d_col2 = st.columns([2, 1])
-                    confirm_txt = d_col1.text_input("Type DELETE to confirm", placeholder="DELETE", label_visibility="collapsed")
-                    if d_col2.button("🗑️ Delete Selected", type="primary"):
-                        if confirm_txt != "DELETE":
-                            st.error("Please type DELETE exactly.")
-                        else:
-                            selected_phones = [str(row['Phone']).replace(',', '').replace('.', '') for idx, row in df.iterrows() if st.session_state.get(f"sel_{str(row['Phone']).replace(',', '').replace('.', '')}", False)]
-                            if not selected_phones: st.warning("No leads selected.")
-                            else:
-                                try:
-                                    all_records = leads_sheet.get_all_values()
-                                    rows_to_delete = []
-                                    for p in selected_phones:
-                                        for i, row in enumerate(all_records):
-                                            if str(row[3]).replace('.0','') == str(p):
-                                                rows_to_delete.append(i + 1)
-                                                break
-                                    
-                                    if rows_to_delete:
-                                        rows_to_delete.sort(reverse=True)
-                                        for r in rows_to_delete:
-                                            leads_sheet.delete_rows(r)
-                                        set_feedback(f"✅ Deleted {len(rows_to_delete)} leads."); time.sleep(1); st.rerun()
-                                    else:
-                                        st.warning("Could not find rows to delete.")
-                                except Exception as e: st.error(f"Delete Error: {e}")
-
-    # --- LEAD LIST RENDERING ---
-    def get_lead_meta(row):
-        status = str(row.get('Status', '')).strip()
-        f_col = next((c for c in df.columns if "Follow" in c), None)
-        f_val = str(row.get(f_col, '')).strip() if f_col else ""
-        t_col = next((c for c in df.columns if "Last Call" in c), None)
-        t_val = str(row.get(t_col, '')).strip() if t_col else ""
-        ago = get_time_ago(t_val)
-        
-        tag_col = next((c for c in df.columns if "Tag" in c or "Label" in c), None)
-        tag_val = str(row.get(tag_col, '')).strip() if tag_col else ""
-        tag_display = f"`{tag_val}`" if tag_val else ""
-        
-        raw_name = str(row.get('Client Name', 'Unknown'))
-        name_display = raw_name[:20] + ".." if len(raw_name) > 20 else raw_name
-        
-        score = 4; badge_text = "PASSIVE"; badge_icon = "⚪"
-        sort_date = date.max 
-        
-        if "naya" in status.lower() or "new" in status.lower(): 
-            score = 0; badge_text = "NEW"; badge_icon="⚡"
-        elif "visit" in status.lower() or "schedule" in status.lower(): 
-            score = 0; badge_text = "VISIT"; badge_icon="📍"
-        elif "negotiat" in status.lower(): 
-            score = 0; badge_text = "DEAL"; badge_icon="💰"
-        elif f_val and len(f_val) > 5:
-            try:
-                f_date = datetime.strptime(f_val, "%Y-%m-%d").date()
-                sort_date = f_date
-                if f_date < today: score = 1; badge_text = f"LATE {f_date.strftime('%d%b')}"; badge_icon="🔴"
-                elif f_date == today: score = 2; badge_text = "TODAY"; badge_icon="🟡"
-                else: score = 3; badge_text = f"{f_date.strftime('%d%b')}"; badge_icon="🗓️"
-            except: pass
-            
-        if "VISIT" in badge_text and f_val and len(f_val) > 5:
-             try: 
-                 f_date = datetime.strptime(f_val, "%Y-%m-%d").date()
-                 badge_text = f"{f_date.strftime('%d%b')}"; badge_icon="📍"
-                 sort_date = f_date
-             except: pass
-
-        return score, sort_date, badge_text, badge_icon, ago, f_val, name_display, tag_display
-
-    if not df.empty:
-        df[['Score', 'SortDate', 'Badge', 'Icon', 'Ago', 'FDate', 'ShortName', 'TagText']] = df.apply(lambda row: pd.Series(get_lead_meta(row)), axis=1)
-        df = df.sort_values(by=['Score', 'SortDate'], ascending=[True, True])
-
-    if df.empty: st.info("📭 No leads found."); return
-
-    st.caption(f"⚡ Live: {len(df)} Leads (IST Time: {get_ist_time()})")
-    
     status_opts = ["Naya Lead", "Ringing / Busy / No Answer", "Asked to Call Later", "Interested (Send Details)", "Site Visit Scheduled", "Visit Done (Negotiation)", "Sale Closed / Booked", "Not Interested / Price / Location", "Junk / Invalid / Agent"]
     all_telecallers = users_df['Username'].tolist()
+    today = get_ist_date()
 
     def get_smart_index(current_val):
         val = str(current_val).lower().strip()
@@ -339,8 +219,9 @@ def show_live_leads_list(users_df, search_q, status_f):
         if f_date_str and len(str(f_date_str)) > 5:
             try:
                 f_date = datetime.strptime(f_date_str, "%Y-%m-%d").date()
-                if f_date > today: return (f"📅 {f_date.strftime('%d-%b')}", "green")
+                if f_date < today: return ("🔴 OVERDUE", "red") # New Priority
                 if f_date == today: return ("🟡 Call Today!", "orange")
+                if f_date > today: return (f"📅 {f_date.strftime('%d-%b')}", "green")
             except: pass
         s = status.lower()
         if "naya" in s: return ("⚡ Call Now", "blue")
@@ -350,24 +231,43 @@ def show_live_leads_list(users_df, search_q, status_f):
 
     for i, row in df.iterrows():
         phone = str(row.get('Phone', '')).replace(',', '').replace('.', '')
+        # Assign unique key based on phone and tab label to prevent duplicate key errors if logic overlaps
+        key_suffix = f"{label_prefix}_{phone}" 
+        
+        assign_col_name = next((c for c in df.columns if "assign" in c.lower()), None)
         assigned_to = row.get(assign_col_name, '-') if assign_col_name else '-'
+        
         f_col_name = next((c for c in df.columns if "Follow" in c), None)
         f_val = row.get(f_col_name, '') if f_col_name else ''
         status = str(row.get('Status', 'Naya Lead')).strip()
         action_text, action_color = get_pipeline_action(status, str(f_val).strip())
 
-        header_text = f"**{row['Icon']} {row['Badge']}** {row['ShortName']} {row['TagText']} *{row['Ago']}*"
+        # Header Metadata
+        t_col = next((c for c in df.columns if "Last Call" in c), None)
+        t_val = str(row.get(t_col, '')).strip() if t_col else ""
+        ago = get_time_ago(t_val)
         
-        container = st
-        if is_bulk_mode:
-            c_check, c_body = st.columns([0.1, 0.9])
-            with c_check: st.checkbox("", key=f"sel_{phone}")
-            container = c_body
-            
-        with container.expander(label=header_text, expanded=False):
+        tag_col = next((c for c in df.columns if "Tag" in c or "Label" in c), None)
+        tag_val = str(row.get(tag_col, '')).strip() if tag_col else ""
+        tag_display = f"`{tag_val}`" if tag_val else ""
+        
+        raw_name = str(row.get('Client Name', 'Unknown'))
+        name_display = raw_name[:20] + ".." if len(raw_name) > 20 else raw_name
+        
+        # Simple Badge logic for display
+        badge_icon = "⚪"
+        if "naya" in status.lower(): badge_icon="⚡"
+        elif "visit" in status.lower(): badge_icon="📍"
+        elif action_color == "red": badge_icon="🔴" # Overdue
+        
+        header_text = f"**{badge_icon}** {name_display} {tag_display} *{ago}*"
+        
+        with st.expander(label=header_text, expanded=False):
+            # Banner
             if action_color == "blue": st.info(action_text)
             elif action_color == "green": st.success(action_text)
             elif action_color == "orange": st.warning(action_text)
+            elif action_color == "red": st.error(action_text)
             else: st.info(action_text)
             
             b1, b2 = st.columns(2)
@@ -376,21 +276,21 @@ def show_live_leads_list(users_df, search_q, status_f):
             
             st.caption(f"**📞 {phone}** | 👤 {assigned_to}")
             st.write(f"📝 **Status:**")
-            ns = st.selectbox("Status", status_opts, key=f"s_{i}", index=get_smart_index(status), label_visibility="collapsed")
+            ns = st.selectbox("Status", status_opts, key=f"s_{key_suffix}", index=get_smart_index(status), label_visibility="collapsed")
             
             existing_notes = str(row.get('Notes', ''))
             if len(existing_notes) > 2: st.markdown(f"<div class='note-history'>{existing_notes}</div>", unsafe_allow_html=True)
             
             c_u1, c_u2 = st.columns(2)
-            new_note = c_u1.text_input("Note", key=f"n_{i}", placeholder="Details...")
+            new_note = c_u1.text_input("Note", key=f"n_{key_suffix}", placeholder="Details...")
             
             date_label = "📅 Follow-up"
             if "Visit" in ns: date_label = "📍 **Visit Date**"
             c_u2.write(date_label)
             
-            d_opt = c_u2.radio("Pick", ["None", "Tom", "3 Days", "Custom"], horizontal=True, key=f"r_{i}", label_visibility="collapsed")
+            d_opt = c_u2.radio("Pick", ["None", "Tom", "3 Days", "Custom"], horizontal=True, key=f"r_{key_suffix}", label_visibility="collapsed")
             final_date = None
-            if d_opt == "Custom": final_date = c_u2.date_input("Date", min_value=today, key=f"d_{i}", label_visibility="collapsed")
+            if d_opt == "Custom": final_date = c_u2.date_input("Date", min_value=today, key=f"d_{key_suffix}", label_visibility="collapsed")
             elif d_opt == "Tom": final_date = today + timedelta(days=1)
             elif d_opt == "3 Days": final_date = today + timedelta(days=3)
             
@@ -398,11 +298,11 @@ def show_live_leads_list(users_df, search_q, status_f):
             if st.session_state['role'] == "Manager":
                 try: u_idx = all_telecallers.index(assigned_to)
                 except: u_idx = 0
-                new_assign = st.selectbox("Assign", all_telecallers, index=u_idx, key=f"a_{i}")
+                new_assign = st.selectbox("Assign", all_telecallers, index=u_idx, key=f"a_{key_suffix}")
 
             st.write("")
             button_ph = st.empty()
-            if button_ph.button("✅ SAVE", key=f"btn_{i}", type="primary", use_container_width=True):
+            if button_ph.button("✅ SAVE", key=f"btn_{key_suffix}", type="primary", use_container_width=True):
                 try:
                     cell = leads_sheet.find(phone)
                     if not cell: st.error("❌ Not found")
@@ -424,6 +324,8 @@ def show_live_leads_list(users_df, search_q, status_f):
                             updates.append({'range': gspread.utils.rowcol_to_a1(r, n_idx), 'values': [[full_note]]})
                         
                         f_idx = get_col("Follow") or 15
+                        # Logic: If they picked a date, save it. If they picked "None" explicitly (or switched status to closed), maybe clear it?
+                        # For now, we only update if a date is selected.
                         if final_date: updates.append({'range': gspread.utils.rowcol_to_a1(r, f_idx), 'values': [[str(final_date)]]})
                         
                         t_idx = get_col("Last Call") or 10
@@ -444,6 +346,100 @@ def show_live_leads_list(users_df, search_q, status_f):
                         time.sleep(0.5); st.rerun()
                 except Exception as e: st.error(f"Err: {e}")
 
+# --- LIVE FEED (UPDATED LOGIC) ---
+@st.fragment(run_every=30)
+def show_live_leads_list(users_df, search_q, status_f):
+    try: data = leads_sheet.get_all_records(); df = pd.DataFrame(data)
+    except: return
+
+    df.columns = df.columns.astype(str).str.strip()
+    assign_col_name = next((c for c in df.columns if "assign" in c.lower()), None)
+
+    # 1. Filter by User
+    if st.session_state['role'] == "Telecaller":
+        if assign_col_name:
+            df = df[(df[assign_col_name] == st.session_state['username']) | 
+                    (df[assign_col_name] == st.session_state['name']) |
+                    (df[assign_col_name] == "TC1")]
+
+    # 2. Global Search Override (If searching, show everything matching)
+    if search_q:
+        df_search = df[df.astype(str).apply(lambda x: x.str.contains(search_q, case=False)).any(axis=1)]
+        st.info(f"🔍 Found {len(df_search)} results for '{search_q}'")
+        render_leads(df_search, users_df, "search")
+        return # Stop here if searching
+
+    # 3. SEGMENTATION LOGIC
+    today = get_ist_date()
+    
+    # Helper to parse date
+    def parse_f_date(val):
+        if not val or len(str(val)) < 5: return None
+        try: return datetime.strptime(str(val).strip(), "%Y-%m-%d").date()
+        except: return None
+
+    # Add parsed date column
+    f_col_name = next((c for c in df.columns if "Follow" in c), None)
+    df['ParsedDate'] = df[f_col_name].apply(parse_f_date) if f_col_name else None
+    
+    # BUCKET 1: ACTION REQUIRED (Today + Overdue + New)
+    # Logic:
+    # - Date is NOT NULL AND Date <= Today (Overdue + Today)
+    # - OR Status contains "Naya" or "New" (Fresh Leads)
+    # - Exclude Closed/Junk/Not Interested
+    
+    junk_mask = df['Status'].str.contains("Closed|Booked|Junk|Invalid|Not Interest", case=False, na=False)
+    
+    # Overdue or Today
+    date_action_mask = (df['ParsedDate'].notna()) & (df['ParsedDate'] <= today)
+    
+    # New Leads (No date usually, specific status)
+    new_lead_mask = df['Status'].str.contains("Naya|New", case=False, na=False)
+    
+    # Combine: (DateAction OR New) AND NOT Junk
+    action_df = df[ (date_action_mask | new_lead_mask) & (~junk_mask) ].copy()
+    
+    # Sort Action DF: Overdue first, then Today, then New
+    def get_sort_priority(row):
+        if pd.notna(row['ParsedDate']):
+            if row['ParsedDate'] < today: return 0 # Overdue (Highest)
+            return 1 # Today
+        return 2 # New Leads
+    
+    if not action_df.empty:
+        action_df['Priority'] = action_df.apply(get_sort_priority, axis=1)
+        action_df = action_df.sort_values(by=['Priority'])
+
+    # BUCKET 2: FUTURE (Tomorrow onwards)
+    future_mask = (df['ParsedDate'].notna()) & (df['ParsedDate'] > today) & (~junk_mask)
+    future_df = df[future_mask].copy()
+    if not future_df.empty:
+        future_df = future_df.sort_values(by='ParsedDate')
+
+    # BUCKET 3: HISTORY (Closed, Junk, or No Date & Not New)
+    # Everything else essentially
+    history_mask = junk_mask | ((~date_action_mask) & (~new_lead_mask) & (~future_mask))
+    history_df = df[history_mask].copy()
+
+    # --- RENDER TABS ---
+    tab1, tab2, tab3 = st.tabs([
+        f"🔥 Action Required ({len(action_df)})", 
+        f"📅 Future / Waiting ({len(future_df)})",
+        f"✅ History / Closed ({len(history_df)})"
+    ])
+
+    with tab1:
+        st.caption("Focus on clearing this list daily. (Overdue → Today → New)")
+        render_leads(action_df, users_df, "action")
+        
+    with tab2:
+        st.caption("Leads scheduled for later. Relax, no action needed now.")
+        render_leads(future_df, users_df, "future")
+        
+    with tab3:
+        st.caption("Leads marked as Closed, Junk, or Idle.")
+        render_leads(history_df, users_df, "history")
+
 def show_add_lead_form(users_df):
     with st.expander("➕ Naya Lead Jodein", expanded=False):
         c1, c2 = st.columns(2)
@@ -451,7 +447,6 @@ def show_add_lead_form(users_df):
         c3, c4 = st.columns(2)
         src = c3.selectbox("Source", ["Meta Ads", "Canopy", "Agent", "Others"])
         ag = c4.text_input("Agent Name") if src == "Agent" else ""
-        
         extra_notes = st.text_area("Notes / Instant Form Answers")
         
         assign = st.session_state['username']
@@ -484,22 +479,6 @@ def show_master_insights():
     tot = len(df); sold = len(df[df['Status'].str.contains("Closed", na=False)])
     junk = len(df[df['Status'].str.contains("Junk|Not Interest", na=False)])
     m1,m2,m3 = st.columns(3); m1.metric("Total", tot); m2.metric("Sold", sold); m3.metric("Junk", junk)
-    
-    st.subheader("2️⃣ Team Activity")
-    assign_col = next((c for c in df.columns if "assign" in c.lower()), None)
-    if assign_col:
-        stats = []
-        for user, user_df in df.groupby(assign_col):
-            pending = len(user_df[user_df['Status'] == 'Naya Lead'])
-            working = len(user_df[user_df['Status'].str.contains("Busy|Interest|Visit", na=False)])
-            sold_count = len(user_df[user_df['Status'].str.contains("Closed", na=False)])
-            last_active = "-"
-            lc_col = next((c for c in df.columns if "Last Call" in c), None)
-            if lc_col: valid_dates = [str(d) for d in user_df[lc_col] if str(d).strip() != ""]; 
-            if valid_dates: last_active = max(valid_dates)
-            stats.append({"User": user, "Total": len(user_df), "⚠️ Pending": pending, "🔥 Active": working, "🎉 Sold": sold_count, "🕒 Last Active": last_active})
-        if stats: st.dataframe(pd.DataFrame(stats), use_container_width=True, hide_index=True)
-        else: st.info("No activity yet.")
 
 def show_admin(users_df):
     st.header("⚙️ Admin")
@@ -528,7 +507,6 @@ def show_admin(users_df):
                         try: uploaded_file.seek(0); df_up = pd.read_csv(uploaded_file, encoding='utf-16', sep='\t')
                         except: uploaded_file.seek(0); df_up = pd.read_csv(uploaded_file, encoding='ISO-8859-1')
                     
-                    # 1. FIND NAME/PHONE
                     cols = [c.lower() for c in df_up.columns]
                     name_idx = next((i for i, c in enumerate(cols) if any(x in c for x in ["full_name", "fullname", "name"])), -1)
                     phone_idx = next((i for i, c in enumerate(cols) if any(x in c for x in ["phone", "mobile", "p:"])), -1)
@@ -539,8 +517,6 @@ def show_admin(users_df):
                         name_col = df_up.columns[name_idx]
                         phone_col = df_up.columns[phone_idx]
                         
-                        # 2. FILTER OUT JUNK COLUMNS
-                        # We specifically block standard Meta/Facebook columns
                         ignore_list = [
                             name_col.lower(), phone_col.lower(),
                             "id", "created_time", "ad_id", "ad_name", "adset_id", "adset_name",
@@ -548,9 +524,7 @@ def show_admin(users_df):
                             "platform", "is_organic", "date", "start_date", "end_date"
                         ]
                         
-                        # Keep only columns that are NOT in the ignore list
                         extra_cols = [c for c in df_up.columns if c.lower() not in ignore_list]
-
                         raw_existing = leads_sheet.col_values(4); existing_phones_set = {re.sub(r'\D', '', str(p))[-10:] for p in raw_existing}
                         rows_to_add = []; ts = get_ist_time(); agent_cycle = itertools.cycle(selected_agents)
                         
@@ -559,12 +533,10 @@ def show_admin(users_df):
                             if len(p_clean) >= 10:
                                 p_last_10 = p_clean[-10:]
                                 if p_last_10 not in existing_phones_set:
-                                    # Collect ONLY clean answers for Notes
                                     notes_data = []
                                     for ec in extra_cols:
                                         val = str(row[ec]).strip()
                                         if val and val.lower() != "nan":
-                                            # Format: "Question: Answer"
                                             notes_data.append(f"{ec}: {val}")
                                     final_note = " | ".join(notes_data)
                                     
@@ -587,10 +559,7 @@ def show_dashboard(users_df):
     show_feedback(); show_add_lead_form(users_df); st.divider()
     c_search, c_filter = st.columns([2, 1])
     search_q = c_search.text_input("🔍 Search", placeholder="Name / Phone", key="search_q")
-    try: df_temp = pd.DataFrame(leads_sheet.get_all_records()); status_opts = df_temp['Status'].unique() if 'Status' in df_temp.columns else []
-    except: status_opts = []
-    status_f = c_filter.multiselect("Filter", status_opts, key="status_f")
-    show_live_leads_list(users_df, search_q, status_f)
+    show_live_leads_list(users_df, search_q, None)
 
 # --- EXECUTION ---
 if st.session_state['role'] == "Manager":
