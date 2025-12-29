@@ -13,7 +13,7 @@ import pytz
 # --- CONFIGURATION ---
 st.set_page_config(page_title="TerraTip CRM", layout="wide", page_icon="🏡")
 
-# --- CUSTOM CSS (MOBILE OPTIMIZED & ALIGNED) ---
+# --- CUSTOM CSS (MOBILE APP STYLE) ---
 custom_css = """
     <style>
         header {visibility: hidden;}
@@ -23,33 +23,32 @@ custom_css = """
         
         .block-container { padding-top: 0.5rem !important; }
 
-        /* --- LIST BUTTON STYLING (App-Style) --- */
+        /* --- CARD BUTTON STYLING --- */
         .stButton button {
             width: 100%;
-            text-align: left !important; /* Force Left Align */
-            padding: 12px 16px !important;
+            text-align: left !important;
+            padding: 14px 18px !important;
             border-radius: 12px !important;
-            background-color: #262730;
+            background-color: #1E1E24; /* Darker, premium card color */
             border: 1px solid #333;
-            transition: background 0.2s;
-            height: auto !important; /* Allow growing for multiline */
-            white-space: pre-wrap !important; /* Enable multiline text */
-            
-            /* Flex centering for the content container */
-            display: flex;
-            align-items: center; 
+            transition: all 0.2s ease-in-out;
+            height: auto !important;
+            white-space: pre-wrap !important; /* Allow 2 lines */
+            display: block;
+            margin-bottom: 4px;
         }
         
         .stButton button:active {
-            background-color: #1f1f1f;
+            background-color: #000;
             border-color: #ff4b4b;
-            transform: scale(0.99);
+            transform: scale(0.98);
         }
         
+        /* Make the Name text inside button larger */
         .stButton button p {
             font-size: 16px;
-            margin: 0px;
-            line-height: 1.4;
+            margin: 0;
+            line-height: 1.5;
         }
 
         /* --- POPUP / DIALOG STYLING --- */
@@ -135,21 +134,8 @@ def generate_lead_id(prefix="L"):
     rand = str(random.randint(10, 99))
     return f"{prefix}-{ts}{rand}"
 
-def get_time_ago(last_call_str):
-    if not last_call_str or len(str(last_call_str)) < 5: return "New"
-    try: last_dt = datetime.strptime(str(last_call_str).strip(), "%Y-%m-%d %H:%M")
-    except:
-        try: last_dt = datetime.strptime(str(last_call_str).strip(), "%Y-%m-%d")
-        except: return "-"
-    if last_dt.tzinfo is None: last_dt = IST.localize(last_dt)
-    now = datetime.now(IST)
-    diff = now - last_dt
-    if diff.days == 0:
-        hrs = diff.seconds // 3600
-        if hrs == 0: return "Now"
-        return f"{hrs}h"
-    elif diff.days == 1: return "1d"
-    else: return f"{diff.days}d"
+# --- LOGIN ---
+if 'logged_in' not in st.session_state: st.session_state['logged_in'] = False
 
 # --- INITIALIZATION ---
 try:
@@ -163,8 +149,7 @@ try:
     leads_sheet = found_sheet if found_sheet else sh.get_worksheet(0)
 except Exception as e: st.error(f"Connection Error: {e}"); st.stop()
 
-# --- LOGIN ---
-if 'logged_in' not in st.session_state: st.session_state['logged_in'] = False
+# --- LOGIN SCREEN ---
 if not st.session_state['logged_in']:
     qp = st.query_params
     if "u" in qp and "k" in qp:
@@ -174,14 +159,12 @@ if not st.session_state['logged_in']:
                                      'role':u_row.iloc[0]['Role'], 'name':u_row.iloc[0]['Name']})
             st.rerun()
 
-if not st.session_state['logged_in']:
     col1, col2, col3 = st.columns([1,2,1])
     with col2:
         st.title("🔐 TerraTip CRM")
         with st.form("login"):
             u = st.text_input("Username"); p = st.text_input("Password", type="password")
             if st.form_submit_button("Login"):
-                users_df = pd.DataFrame(users_sheet.get_all_records())
                 u_row = users_df[users_df['Username'] == u]
                 if not u_row.empty and u_row.iloc[0]['Password'] == hash_pass(p):
                     st.session_state.update({'logged_in':True, 'username':u, 
@@ -191,7 +174,7 @@ if not st.session_state['logged_in']:
                 else: st.error("❌ Invalid")
     st.stop()
 
-# --- APP LAYOUT ---
+# --- APP HEADER ---
 c_top_1, c_top_2 = st.columns([3, 1])
 with c_top_1: st.markdown(f"### 🏡 TerraTip CRM\n👤 **{st.session_state['name']}** ({st.session_state['role']})")
 with c_top_2:
@@ -329,27 +312,34 @@ def render_leads(df, users_df, label_prefix=""):
     for i, row in df.iterrows():
         phone = str(row.get('Phone', '')).replace(',', '').replace('.', '')
         name = str(row.get('Client Name', 'Unknown'))
-        status = str(row.get('Status', ''))
+        raw_status = str(row.get('Status', ''))
         
-        # Date Logic
+        # 1. SMART STATUS (Shorten Text)
+        display_status = raw_status
+        if "Not Interested" in raw_status: display_status = "Not Interested"
+        elif "Ringing" in raw_status: display_status = "Ringing"
+        elif "Visit Done" in raw_status: display_status = "Visit Done"
+        
+        # 2. DATE LOGIC
         f_col = next((c for c in df.columns if "Follow" in c), None)
         f_val = str(row.get(f_col, '')).strip()
         display_date = ""
         if len(f_val) > 5:
             try:
                 d = datetime.strptime(f_val, "%Y-%m-%d").date()
-                display_date = f"🗓️ {d.strftime('%d-%b')}"
+                if d == datetime.now(IST).date(): display_date = "Today"
+                else: display_date = d.strftime('%d %b')
             except: pass
             
-        icon = get_status_icon(status)
+        icon = get_status_icon(raw_status)
+        short_name = name[:22] + ".." if len(name) > 22 else name
         
-        # Truncate Name
-        short_name = name[:20] + ".." if len(name) > 20 else name
-        
-        # --- NEW: MULTILINE LABEL FOR ALIGNMENT ---
-        # Line 1: Name (Bold)
-        # Line 2: Icon + Status + Date (Small)
-        label = f"**{short_name}**\n{icon} {status}  {display_date}"
+        # 3. CARD LABEL (2 Lines: Name \n Icon Status ... Date)
+        # Using a distinct Separator '•' for clean alignment without spacing hacks
+        if display_date:
+            label = f"**{short_name}**\n{icon} {display_status}   •   📅 {display_date}"
+        else:
+            label = f"**{short_name}**\n{icon} {display_status}"
         
         if st.button(label, key=f"btn_{label_prefix}_{phone}", use_container_width=True):
             open_lead_modal(row.to_dict(), users_df)
@@ -385,6 +375,7 @@ def show_live_leads_list(users_df, search_q, status_f):
     f_col_name = next((c for c in df.columns if "Follow" in c), None)
     df['ParsedDate'] = df[f_col_name].apply(parse_f_date) if f_col_name else None
     
+    # MASKS
     dead_mask = df['Status'].str.contains("Closed|Booked|Junk|Invalid|Agent", case=False, na=False)
     recycle_mask = df['Status'].str.contains("Price|Location|Not Interest", case=False, na=False)
     date_action_mask = (df['ParsedDate'].notna()) & (df['ParsedDate'] <= today)
