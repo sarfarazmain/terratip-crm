@@ -13,7 +13,7 @@ import pytz
 # --- CONFIGURATION ---
 st.set_page_config(page_title="TerraTip CRM", layout="wide", page_icon="🏡")
 
-# --- CUSTOM CSS (MOBILE OPTIMIZED) ---
+# --- CUSTOM CSS (MOBILE OPTIMIZED & ALIGNED) ---
 custom_css = """
     <style>
         header {visibility: hidden;}
@@ -23,48 +23,68 @@ custom_css = """
         
         .block-container { padding-top: 0.5rem !important; }
 
-        /* LIST BUTTON STYLING (The "Fat Finger" Fix) */
+        /* --- LIST BUTTON STYLING (App-Style) --- */
         .stButton button {
             width: 100%;
-            text-align: left;
-            padding: 15px 20px !important; /* Taller touch target */
-            font-size: 16px !important;
-            font-weight: 500 !important;
-            border-radius: 10px !important;
+            text-align: left !important; /* Force Left Align */
+            padding: 12px 16px !important;
+            border-radius: 12px !important;
             background-color: #262730;
-            border: 1px solid #444;
+            border: 1px solid #333;
             transition: background 0.2s;
+            height: auto !important; /* Allow growing for multiline */
+            white-space: pre-wrap !important; /* Enable multiline text */
+            
+            /* Flex centering for the content container */
             display: flex;
-            justify-content: space-between;
-        }
-        .stButton button:active {
-            background-color: #333;
-            border-color: #ff4b4b;
+            align-items: center; 
         }
         
-        /* POPUP / DIALOG STYLING */
-        div[data-testid="stDialog"] {
-            border-radius: 15px;
+        .stButton button:active {
+            background-color: #1f1f1f;
+            border-color: #ff4b4b;
+            transform: scale(0.99);
+        }
+        
+        .stButton button p {
+            font-size: 16px;
+            margin: 0px;
+            line-height: 1.4;
         }
 
-        /* ACTION BUTTONS IN POPUP */
+        /* --- POPUP / DIALOG STYLING --- */
+        div[data-testid="stDialog"] {
+            border-radius: 16px;
+            padding-bottom: 20px;
+        }
+
+        /* --- ACTION BUTTONS IN POPUP --- */
         .big-btn {
-            display: block; width: 100%; padding: 12px; text-align: center;
-            border-radius: 8px; text-decoration: none; font-weight: 700;
+            display: block; width: 100%; padding: 14px; text-align: center;
+            border-radius: 10px; text-decoration: none; font-weight: 600;
             font-size: 16px; margin-bottom: 12px;
-            box-shadow: 0 4px 6px rgba(0,0,0,0.3);
+            box-shadow: 0 4px 6px rgba(0,0,0,0.2);
         }
         .call-btn { background-color: #28a745; color: white !important; }
         .wa-btn { background-color: #25D366; color: white !important; }
         
         .note-history {
-            font-size: 13px; color: #ccc; background: #1a1a1a;
-            padding: 12px; border-radius: 8px; max-height: 120px;
+            font-size: 13px; color: #aaa; background: #121212;
+            padding: 12px; border-radius: 8px; max-height: 150px;
             overflow-y: auto; margin-bottom: 15px; border-left: 4px solid #555;
+            line-height: 1.5;
         }
         
-        /* HIDE DEFAULT BUTTON BORDERS FOR CLEANER LOOK */
+        /* HIDE DEFAULT BUTTON BORDERS */
         button:focus { outline: none !important; box-shadow: none !important; }
+        
+        /* TABS */
+        .stTabs [data-baseweb="tab-list"] { gap: 8px; }
+        .stTabs [data-baseweb="tab-list"] button {
+            border-radius: 20px;
+            padding: 4px 12px;
+            font-size: 14px;
+        }
     </style>
 """
 st.markdown(custom_css, unsafe_allow_html=True)
@@ -182,30 +202,42 @@ st.divider()
 def big_call_btn(num): return f"""<a href="tel:{num}" class="big-btn call-btn">📞 CALL NOW</a>"""
 def big_wa_btn(num, name): return f"""<a href="https://wa.me/91{num}?text=Namaste {name}" class="big-btn wa-btn" target="_blank">💬 WHATSAPP</a>"""
 
-# --- LEAD MODAL (THE NEW POPUP) ---
+# --- ICON HELPER ---
+def get_status_icon(status):
+    s = str(status).lower().strip()
+    if "naya" in s or "new" in s: return "🆕"
+    if "ring" in s: return "📞" # Ringing
+    if "busy" in s or "no answer" in s: return "🚫" # Busy
+    if "later" in s: return "⏰" # Call Later
+    if "interest" in s and "not" not in s: return "🔥" # Interested
+    if "visit scheduled" in s: return "🗓️" # Visit Scheduled
+    if "visit done" in s or "negotiat" in s: return "🤝" # Negotiation
+    if "closed" in s or "booked" in s: return "✅" # Sold
+    if "price" in s or "location" in s: return "📉" # Recycle
+    if "junk" in s or "agent" in s: return "🗑️" # Junk
+    return "⚪"
+
+# --- LEAD MODAL ---
 @st.dialog("📋 Lead Details")
 def open_lead_modal(row_dict, users_df):
-    """
-    This is the popup window that appears when you click a lead.
-    """
     phone = str(row_dict.get('Phone', '')).replace(',', '').replace('.', '')
     name = row_dict.get('Client Name', 'Unknown')
     status = row_dict.get('Status', 'Naya Lead')
     notes = row_dict.get('Notes', '')
     assigned_to = row_dict.get('Assign', '-')
     
-    # 1. Action Buttons
+    # Action Buttons
     b1, b2 = st.columns(2)
     with b1: st.markdown(big_call_btn(phone), unsafe_allow_html=True)
     with b2: st.markdown(big_wa_btn(phone, name), unsafe_allow_html=True)
     
     st.divider()
     
-    # 2. Key Info
+    # Key Info
     st.caption(f"👤 **{name}** | 📞 {phone}")
     st.caption(f"👮 Assigned: {assigned_to}")
     
-    # 3. Status Update
+    # Status Update
     status_opts = ["Naya Lead", "Ringing / Busy / No Answer", "Asked to Call Later", "Interested (Send Details)", "Site Visit Scheduled", "Visit Done (Negotiation)", "Sale Closed / Booked", "Not Interested / Price / Location", "Junk / Invalid / Agent"]
     
     def get_index(val, opts):
@@ -216,18 +248,16 @@ def open_lead_modal(row_dict, users_df):
 
     new_status = st.selectbox("Update Status", status_opts, index=get_index(status, status_opts))
     
-    # 4. History / Notes
+    # History
     if len(str(notes)) > 2:
         st.markdown(f"**📝 History:**")
         st.markdown(f"<div class='note-history'>{notes}</div>", unsafe_allow_html=True)
     
-    new_note = st.text_input("➕ Add Note", placeholder="Type new update here...")
+    new_note = st.text_input("➕ Add Note", placeholder="Type update here...")
     
-    # 5. Follow Up Date (WITH CALENDAR)
+    # Follow Up
     st.write("📅 **Next Follow-up:**")
     today = get_ist_date()
-    
-    # Quick Buttons + Custom
     col_d1, col_d2 = st.columns([2, 1])
     date_opt = col_d1.radio("Quick Pick", ["None", "Tomorrow", "3 Days", "Custom"], horizontal=True, label_visibility="collapsed")
     
@@ -239,7 +269,7 @@ def open_lead_modal(row_dict, users_df):
     elif date_opt == "3 Days":
         final_date = today + timedelta(days=3)
         
-    # 6. Re-Assign (Manager Only)
+    # Re-Assign
     new_assign = None
     if st.session_state['role'] == "Manager":
         all_telecallers = users_df['Username'].tolist()
@@ -247,11 +277,11 @@ def open_lead_modal(row_dict, users_df):
         except: u_idx = 0
         new_assign = st.selectbox("Re-Assign To", all_telecallers, index=u_idx)
 
-    # 7. SAVE BUTTON
+    # Save
     if st.button("✅ SAVE & CLOSE", type="primary", use_container_width=True):
         try:
             cell = leads_sheet.find(phone)
-            if not cell: st.error("❌ Lead not found in sheet!")
+            if not cell: st.error("❌ Lead not found!")
             else:
                 r = cell.row
                 h = leads_sheet.row_values(1)
@@ -261,31 +291,24 @@ def open_lead_modal(row_dict, users_df):
                     except: return None
                 
                 updates = []
-                
-                # Status
                 updates.append({'range': gspread.utils.rowcol_to_a1(r, get_col("Status") or 8), 'values': [[new_status]]})
                 
-                # Note
                 if new_note:
                     ts_str = datetime.now(IST).strftime("%d-%b")
                     full_note = f"[{ts_str}] {new_note}\n{notes}"
                     updates.append({'range': gspread.utils.rowcol_to_a1(r, get_col("Notes") or 12), 'values': [[full_note]]})
                 
-                # Date
                 if final_date:
                     updates.append({'range': gspread.utils.rowcol_to_a1(r, get_col("Follow") or 15), 'values': [[str(final_date)]]})
                 
-                # Last Call Time
                 updates.append({'range': gspread.utils.rowcol_to_a1(r, get_col("Last Call") or 10), 'values': [[get_ist_time()]]})
                 
-                # Count
                 c_idx = get_col("Count")
                 if c_idx:
                     curr = leads_sheet.cell(r, c_idx).value
                     val = int(curr) + 1 if curr and curr.isdigit() else 1
                     updates.append({'range': gspread.utils.rowcol_to_a1(r, c_idx), 'values': [[val]]})
                 
-                # Assign
                 if new_assign and new_assign != assigned_to:
                     updates.append({'range': gspread.utils.rowcol_to_a1(r, get_col("Assign") or 7), 'values': [[new_assign]]})
 
@@ -299,14 +322,9 @@ def open_lead_modal(row_dict, users_df):
 
 # --- REUSABLE LEAD RENDERER ---
 def render_leads(df, users_df, label_prefix=""):
-    """
-    Renders leads as CLICKABLE BUTTONS.
-    """
     if df.empty:
         st.info("✅ No leads in this section.")
         return
-
-    today = get_ist_date()
 
     for i, row in df.iterrows():
         phone = str(row.get('Phone', '')).replace(',', '').replace('.', '')
@@ -320,27 +338,23 @@ def render_leads(df, users_df, label_prefix=""):
         if len(f_val) > 5:
             try:
                 d = datetime.strptime(f_val, "%Y-%m-%d").date()
-                display_date = f"📅 {d.strftime('%d-%b')}"
+                display_date = f"🗓️ {d.strftime('%d-%b')}"
             except: pass
             
-        # Icon Logic
-        icon = "⚪"
-        if "naya" in status.lower(): icon = "⚡"
-        elif "visit" in status.lower(): icon = "📍"
-        elif "call" in status.lower(): icon = "📞"
+        icon = get_status_icon(status)
         
         # Truncate Name
-        short_name = name[:18] + ".." if len(name) > 18 else name
+        short_name = name[:20] + ".." if len(name) > 20 else name
         
-        # THE BUTTON LABEL (Name + Date)
-        # Using spaces to separate name and date visually
-        label = f"{icon} {short_name} \u2003\u2003 {display_date}"
+        # --- NEW: MULTILINE LABEL FOR ALIGNMENT ---
+        # Line 1: Name (Bold)
+        # Line 2: Icon + Status + Date (Small)
+        label = f"**{short_name}**\n{icon} {status}  {display_date}"
         
-        # Render Button
         if st.button(label, key=f"btn_{label_prefix}_{phone}", use_container_width=True):
             open_lead_modal(row.to_dict(), users_df)
 
-# --- LIVE FEED (UPDATED 4-TAB LOGIC) ---
+# --- LIVE FEED ---
 @st.fragment(run_every=30)
 def show_live_leads_list(users_df, search_q, status_f):
     try: data = leads_sheet.get_all_records(); df = pd.DataFrame(data)
@@ -349,21 +363,18 @@ def show_live_leads_list(users_df, search_q, status_f):
     df.columns = df.columns.astype(str).str.strip()
     assign_col_name = next((c for c in df.columns if "assign" in c.lower()), None)
 
-    # 1. Filter by User
     if st.session_state['role'] == "Telecaller":
         if assign_col_name:
             df = df[(df[assign_col_name] == st.session_state['username']) | 
                     (df[assign_col_name] == st.session_state['name']) |
                     (df[assign_col_name] == "TC1")]
 
-    # 2. Global Search Override
     if search_q:
         df_search = df[df.astype(str).apply(lambda x: x.str.contains(search_q, case=False)).any(axis=1)]
-        st.info(f"🔍 Found {len(df_search)} results for '{search_q}'")
+        st.info(f"🔍 Found {len(df_search)} results")
         render_leads(df_search, users_df, "search")
         return
 
-    # 3. SEGMENTATION LOGIC
     today = get_ist_date()
     
     def parse_f_date(val):
@@ -374,7 +385,6 @@ def show_live_leads_list(users_df, search_q, status_f):
     f_col_name = next((c for c in df.columns if "Follow" in c), None)
     df['ParsedDate'] = df[f_col_name].apply(parse_f_date) if f_col_name else None
     
-    # DEFINE STATUS GROUPS
     dead_mask = df['Status'].str.contains("Closed|Booked|Junk|Invalid|Agent", case=False, na=False)
     recycle_mask = df['Status'].str.contains("Price|Location|Not Interest", case=False, na=False)
     date_action_mask = (df['ParsedDate'].notna()) & (df['ParsedDate'] <= today)
@@ -394,8 +404,7 @@ def show_live_leads_list(users_df, search_q, status_f):
 
     # BUCKET 2: FUTURE
     future_df = df[ future_mask & (~dead_mask) ].copy()
-    if not future_df.empty:
-        future_df = future_df.sort_values(by='ParsedDate')
+    if not future_df.empty: future_df = future_df.sort_values(by='ParsedDate')
 
     # BUCKET 3: RECYCLE
     recycle_df = df[ recycle_mask & (df['ParsedDate'].isna()) & (~dead_mask) & (~new_lead_mask) ].copy()
@@ -404,29 +413,17 @@ def show_live_leads_list(users_df, search_q, status_f):
     history_mask = dead_mask | ( (~date_action_mask) & (~new_lead_mask) & (~future_mask) & (~recycle_mask) )
     history_df = df[history_mask].copy()
 
-    # --- RENDER TABS ---
     tab1, tab2, tab3, tab4 = st.tabs([
         f"🔥 Action ({len(action_df)})", 
-        f"📅 Future ({len(future_df)})",
-        f"♻️ Recycle ({len(recycle_df)})",
+        f"📅 Future ({len(future_df)})", 
+        f"♻️ Recycle ({len(recycle_df)})", 
         f"❌ Closed ({len(history_df)})"
     ])
 
-    with tab1:
-        st.caption("Calls to make NOW.")
-        render_leads(action_df, users_df, "action")
-        
-    with tab2:
-        st.caption("Scheduled for later.")
-        render_leads(future_df, users_df, "future")
-        
-    with tab3:
-        st.caption("Mismatch leads (Price/Location).")
-        render_leads(recycle_df, users_df, "recycle")
-        
-    with tab4:
-        st.caption("Closed/Junk data.")
-        render_leads(history_df, users_df, "history")
+    with tab1: render_leads(action_df, users_df, "action")
+    with tab2: render_leads(future_df, users_df, "future")
+    with tab3: render_leads(recycle_df, users_df, "recycle")
+    with tab4: render_leads(history_df, users_df, "history")
 
 def show_add_lead_form(users_df):
     with st.expander("➕ Naya Lead Jodein", expanded=False):
@@ -435,7 +432,7 @@ def show_add_lead_form(users_df):
         c3, c4 = st.columns(2)
         src = c3.selectbox("Source", ["Meta Ads", "Canopy", "Agent", "Others"])
         ag = c4.text_input("Agent Name") if src == "Agent" else ""
-        extra_notes = st.text_area("Notes / Instant Form Answers")
+        extra_notes = st.text_area("Notes")
         
         assign = st.session_state['username']
         if st.session_state['role'] == "Manager":
@@ -499,61 +496,4 @@ def show_admin(users_df):
                     name_idx = next((i for i, c in enumerate(cols) if any(x in c for x in ["full_name", "fullname", "name"])), -1)
                     phone_idx = next((i for i, c in enumerate(cols) if any(x in c for x in ["phone", "mobile", "p:"])), -1)
                     
-                    if name_idx == -1 or phone_idx == -1:
-                        st.error("Could not find 'Name' or 'Phone' columns automatically.")
-                    else:
-                        name_col = df_up.columns[name_idx]
-                        phone_col = df_up.columns[phone_idx]
-                        
-                        ignore_list = [
-                            name_col.lower(), phone_col.lower(),
-                            "id", "created_time", "ad_id", "ad_name", "adset_id", "adset_name",
-                            "campaign_id", "campaign_name", "form_id", "form_name", 
-                            "platform", "is_organic", "date", "start_date", "end_date"
-                        ]
-                        
-                        extra_cols = [c for c in df_up.columns if c.lower() not in ignore_list]
-                        raw_existing = leads_sheet.col_values(4); existing_phones_set = {re.sub(r'\D', '', str(p))[-10:] for p in raw_existing}
-                        rows_to_add = []; ts = get_ist_time(); agent_cycle = itertools.cycle(selected_agents)
-                        
-                        for idx, row in df_up.iterrows():
-                            p_raw = str(row[phone_col]); p_clean = re.sub(r'\D', '', p_raw)
-                            if len(p_clean) >= 10:
-                                p_last_10 = p_clean[-10:]
-                                if p_last_10 not in existing_phones_set:
-                                    notes_data = []
-                                    for ec in extra_cols:
-                                        val = str(row[ec]).strip()
-                                        if val and val.lower() != "nan":
-                                            notes_data.append(f"{ec}: {val}")
-                                    final_note = " | ".join(notes_data)
-                                    
-                                    new_id = generate_lead_id(); assigned_person = next(agent_cycle)
-                                    new_row = [new_id, ts, row[name_col], p_clean, "Meta Ads", "", assigned_person, "Naya Lead", "", ts, "", final_note, "", "", ""]
-                                    rows_to_add.append(new_row); existing_phones_set.add(p_last_10)
-                        
-                        if rows_to_add: leads_sheet.append_rows(rows_to_add); set_feedback(f"✅ Added {len(rows_to_add)} leads!"); time.sleep(1); st.rerun()
-                except Exception as e: st.error(f"Processing Error: {e}")
-
-    with c2:
-        st.subheader("Team List")
-        st.dataframe(users_df[['Name','Username','Role']], hide_index=True)
-        opts = [x for x in users_df['Username'].unique() if x != st.session_state['username']]
-        if opts:
-            dt = st.selectbox("Delete", opts)
-            if st.button("❌ Delete"): users_sheet.delete_rows(users_sheet.find(dt).row); set_feedback(f"Deleted {dt}"); st.rerun()
-
-def show_dashboard(users_df):
-    show_feedback(); show_add_lead_form(users_df); st.divider()
-    c_search, c_filter = st.columns([2, 1])
-    search_q = c_search.text_input("🔍 Search", placeholder="Name / Phone", key="search_q")
-    show_live_leads_list(users_df, search_q, None)
-
-# --- EXECUTION ---
-if st.session_state['role'] == "Manager":
-    t1, t2, t3 = st.tabs(["🏠 CRM", "📊 Insights", "⚙️ Admin"])
-    with t1: show_dashboard(users_df)
-    with t2: show_master_insights()
-    with t3: show_admin(users_df)
-else:
-    show_dashboard(users_df)
+                    if name_idx
