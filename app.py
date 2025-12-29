@@ -11,23 +11,23 @@ import itertools
 import pytz
 
 # --- CONFIGURATION ---
-st.set_page_config(page_title="TerraTip CRM", layout="wide", page_icon="🏡")
+st.set_page_config(page_title="TerraTip CRM", layout="wide", page_icon="🏡", initial_sidebar_state="collapsed")
 
-# --- CUSTOM CSS (MOBILE APP STYLE) ---
+# --- CUSTOM CSS (MOBILE OPTIMIZED & FIXED) ---
 custom_css = """
     <style>
-        header {visibility: hidden;}
-        #MainMenu {visibility: hidden;}
-        footer {visibility: hidden;}
+        /* 1. RESTORE HAMBURGER MENU */
+        header {visibility: visible !important;} 
         .stAppDeployButton {display: none;}
-        
-        .block-container { padding-top: 0.5rem !important; }
+        [data-testid="stDecoration"] {display: none;} /* Hide the colored bar only */
 
-        /* --- CARD BUTTON STYLING --- */
+        .block-container { padding-top: 1rem !important; }
+
+        /* 2. CARD BUTTON STYLING (Strict Alignment) */
         .stButton button {
             width: 100%;
             text-align: left !important;
-            padding: 14px 18px !important;
+            padding: 12px 16px !important;
             border-radius: 12px !important;
             background-color: #1E1E24;
             border: 1px solid #333;
@@ -44,19 +44,22 @@ custom_css = """
             transform: scale(0.98);
         }
         
+        /* Inner Text Styling */
         .stButton button p {
-            font-size: 16px;
+            font-size: 15px;
             margin: 0;
-            line-height: 1.5;
+            line-height: 1.4;
+            text-align: left !important;
+            width: 100%;
         }
 
-        /* --- POPUP / DIALOG STYLING --- */
+        /* 3. POPUP STYLING */
         div[data-testid="stDialog"] {
             border-radius: 16px;
             padding-bottom: 20px;
         }
 
-        /* --- ACTION BUTTONS --- */
+        /* 4. ACTION BUTTONS */
         .big-btn {
             display: block; width: 100%; padding: 14px; text-align: center;
             border-radius: 10px; text-decoration: none; font-weight: 600;
@@ -75,9 +78,10 @@ custom_css = """
         
         button:focus { outline: none !important; box-shadow: none !important; }
         
-        .stTabs [data-baseweb="tab-list"] { gap: 8px; }
+        /* Tabs Styling */
+        .stTabs [data-baseweb="tab-list"] { gap: 6px; }
         .stTabs [data-baseweb="tab-list"] button {
-            border-radius: 20px; padding: 4px 12px; font-size: 14px;
+            border-radius: 20px; padding: 4px 10px; font-size: 13px;
         }
     </style>
 """
@@ -218,12 +222,10 @@ def open_lead_modal(row_dict, users_df):
     st.caption(f"👤 **{name}** | 📞 {phone}")
     st.caption(f"👮 Assigned: {assigned_to}")
     
-    # Smart Index for Dropdown
     def get_index(val, opts):
         val = str(val).lower().strip()
         for i, x in enumerate(opts):
             if x.lower() == val: return i
-        # Fallback for old statuses to map to new ones
         if "price" in val or "location" in val: return opts.index("Lost (Price / Location)")
         if "visit" in val: return opts.index("Site Visit Scheduled")
         if "busy" in val: return opts.index("Ringing / No Response")
@@ -293,7 +295,7 @@ def open_lead_modal(row_dict, users_df):
         except Exception as e: st.error(f"Error: {e}")
 
 # --- REUSABLE LEAD RENDERER ---
-def render_leads(df, users_df, label_prefix=""):
+def render_leads(df, users_df, label_prefix="", is_bulk=False):
     if df.empty:
         st.info("✅ No leads in this section.")
         return
@@ -303,14 +305,13 @@ def render_leads(df, users_df, label_prefix=""):
         name = str(row.get('Client Name', 'Unknown'))
         raw_status = str(row.get('Status', ''))
         
-        # 1. SMART STATUS DISPLAY
+        # Display Status Logic
         display_status = raw_status
         if "Lost" in raw_status or "Price" in raw_status: display_status = "Lost (Price/Loc)"
         elif "Ringing" in raw_status: display_status = "Ringing"
         elif "Negotiation" in raw_status: display_status = "Negotiation"
         elif "Follow-up" in raw_status: display_status = "Follow-up"
         
-        # 2. DATE LOGIC
         f_col = next((c for c in df.columns if "Follow" in c), None)
         f_val = str(row.get(f_col, '')).strip()
         display_date = ""
@@ -324,15 +325,25 @@ def render_leads(df, users_df, label_prefix=""):
         icon = get_status_icon(raw_status)
         short_name = name[:20] + ".." if len(name) > 20 else name
         
-        # 3. HTML LABEL
-        # Cleaner text: No extra spaces needed if using short status
+        # Card Layout
+        # Use simple spacing to push date to right. 
+        # Since buttons don't support flexbox perfectly without HTML, we format carefully.
         if display_date:
-            label = f"**{short_name}**\n{icon} {display_status}   •   📅 {display_date}"
+            label = f"**{short_name}**\n{icon} {display_status} \u2003\u2003\u2003 📅 {display_date}"
         else:
             label = f"**{short_name}**\n{icon} {display_status}"
         
-        if st.button(label, key=f"btn_{label_prefix}_{phone}", use_container_width=True):
-            open_lead_modal(row.to_dict(), users_df)
+        # BULK MODE: Use Columns
+        if is_bulk:
+            c_check, c_btn = st.columns([0.15, 0.85])
+            with c_check: 
+                st.checkbox("", key=f"sel_{label_prefix}_{phone}")
+            with c_btn:
+                if st.button(label, key=f"btn_{label_prefix}_{phone}", use_container_width=True):
+                    open_lead_modal(row.to_dict(), users_df)
+        else:
+            if st.button(label, key=f"btn_{label_prefix}_{phone}", use_container_width=True):
+                open_lead_modal(row.to_dict(), users_df)
 
 # --- LIVE FEED ---
 @st.fragment(run_every=30)
@@ -349,14 +360,46 @@ def show_live_leads_list(users_df, search_q, status_f):
                     (df[assign_col_name] == st.session_state['name']) |
                     (df[assign_col_name] == "TC1")]
 
+    # SEARCH OVERRIDE
     if search_q:
         df_search = df[df.astype(str).apply(lambda x: x.str.contains(search_q, case=False)).any(axis=1)]
         st.info(f"🔍 Found {len(df_search)} results")
-        render_leads(df_search, users_df, "search")
+        render_leads(df_search, users_df, "search", False)
         return
 
     today = get_ist_date()
     
+    # BULK MODE TOGGLE CHECK
+    is_bulk = st.session_state.get('bulk_mode', False)
+    
+    # --- BULK ACTION BAR (Only if active) ---
+    if is_bulk:
+        st.warning("⚡ BULK MODE ACTIVE: Select leads below")
+        bk_c1, bk_c2 = st.columns(2)
+        with bk_c1:
+            if st.button("🗑️ DELETE SELECTED", type="primary", use_container_width=True):
+                # Gather selected
+                selected_phones = []
+                for k, v in st.session_state.items():
+                    if k.startswith("sel_") and v:
+                        selected_phones.append(k.split("_")[-1]) # Extract phone from key
+                
+                if not selected_phones: st.error("No leads selected")
+                else:
+                    try:
+                        all_vals = leads_sheet.get_all_values()
+                        # Assuming Phone is col 4 (index 3)
+                        rows_to_del = []
+                        for i, row in enumerate(all_vals):
+                            p_clean = str(row[3]).replace(',', '').replace('.', '')
+                            if p_clean in selected_phones:
+                                rows_to_del.append(i+1)
+                        
+                        rows_to_del.sort(reverse=True)
+                        for r in rows_to_del: leads_sheet.delete_rows(r)
+                        set_feedback(f"Deleted {len(rows_to_del)} leads"); time.sleep(1); st.rerun()
+                    except Exception as e: st.error(str(e))
+
     def parse_f_date(val):
         if not val or len(str(val)) < 5: return None
         try: return datetime.strptime(str(val).strip(), "%Y-%m-%d").date()
@@ -365,27 +408,15 @@ def show_live_leads_list(users_df, search_q, status_f):
     f_col_name = next((c for c in df.columns if "Follow" in c), None)
     df['ParsedDate'] = df[f_col_name].apply(parse_f_date) if f_col_name else None
     
-    # --- MASKS (CRITICAL LOGIC) ---
-    # 1. Dead: Closed, Junk, Agent
+    # LOGIC MASKS
     dead_mask = df['Status'].str.contains("Closed|Booked|Junk|Invalid|Agent", case=False, na=False)
-    
-    # 2. Recycle: Lost, Price, Location, Not Interested
-    # MUST CAPTURE ALL VARIANTS to force them out of Action
     recycle_mask = df['Status'].str.contains("Lost|Price|Location|Not Interest", case=False, na=False)
-    
-    # 3. Date buckets
     date_action_mask = (df['ParsedDate'].notna()) & (df['ParsedDate'] <= today)
     future_mask = (df['ParsedDate'].notna()) & (df['ParsedDate'] > today)
-    
-    # 4. New Leads
     new_lead_mask = df['Status'].str.contains("Naya|New", case=False, na=False)
     
-    # --- BUCKETS ---
-    
-    # ACTION: (Date<=Today OR New) AND (NOT Dead) AND (NOT Recycle)
-    # This prevents "Not Interested" leads from showing up here even if they have a date!
+    # BUCKETS
     action_df = df[ (date_action_mask | new_lead_mask) & (~dead_mask) & (~recycle_mask) ].copy()
-    
     def get_sort_priority(row):
         if pd.notna(row['ParsedDate']):
             if row['ParsedDate'] < today: return 0 
@@ -395,17 +426,11 @@ def show_live_leads_list(users_df, search_q, status_f):
         action_df['Priority'] = action_df.apply(get_sort_priority, axis=1)
         action_df = action_df.sort_values(by=['Priority'])
 
-    # FUTURE: (Date>Today) AND (NOT Dead) AND (NOT Recycle)
     future_df = df[ future_mask & (~dead_mask) & (~recycle_mask) ].copy()
     if not future_df.empty: future_df = future_df.sort_values(by='ParsedDate')
 
-    # RECYCLE: (Recycle Status) AND (NOT Dead)
-    # We include them here regardless of date, because status is King.
     recycle_df = df[ recycle_mask & (~dead_mask) ].copy()
-
-    # HISTORY: Dead OR (Rest)
-    history_mask = dead_mask | ( (~date_action_mask) & (~new_lead_mask) & (~future_mask) & (~recycle_mask) )
-    history_df = df[history_mask].copy()
+    history_df = df[dead_mask | ( (~date_action_mask) & (~new_lead_mask) & (~future_mask) & (~recycle_mask) )].copy()
 
     tab1, tab2, tab3, tab4 = st.tabs([
         f"🔥 Action ({len(action_df)})", 
@@ -414,10 +439,10 @@ def show_live_leads_list(users_df, search_q, status_f):
         f"❌ Closed ({len(history_df)})"
     ])
 
-    with tab1: render_leads(action_df, users_df, "action")
-    with tab2: render_leads(future_df, users_df, "future")
-    with tab3: render_leads(recycle_df, users_df, "recycle")
-    with tab4: render_leads(history_df, users_df, "history")
+    with tab1: render_leads(action_df, users_df, "action", is_bulk)
+    with tab2: render_leads(future_df, users_df, "future", is_bulk)
+    with tab3: render_leads(recycle_df, users_df, "recycle", is_bulk)
+    with tab4: render_leads(history_df, users_df, "history", is_bulk)
 
 def show_master_insights():
     st.header("📊 Analytics")
@@ -505,16 +530,20 @@ def show_admin(users_df):
             dt = st.selectbox("Delete", opts)
             if st.button("❌ Delete"): users_sheet.delete_rows(users_sheet.find(dt).row); set_feedback(f"Deleted {dt}"); st.rerun()
 
-# 1. SIDEBAR
+# --- SIDEBAR (HAMBURGER) ---
 with st.sidebar:
-    st.image("https://cdn-icons-png.flaticon.com/512/2163/2163350.png", width=50) 
     st.markdown(f"### 👤 {st.session_state['name']}")
     st.caption(f"Role: {st.session_state['role']}")
     st.divider()
     
     page = st.radio("Navigate", ["🏠 CRM", "📊 Insights", "⚙️ Admin"])
-    
     st.divider()
+    
+    # BULK MODE TOGGLE (Managers Only)
+    if st.session_state['role'] == "Manager" and page == "🏠 CRM":
+        st.toggle("⚡ Bulk Manager Mode", key="bulk_mode")
+        st.caption("Enable to delete multiple leads.")
+        st.divider()
     
     if page == "🏠 CRM":
         st.markdown("### ➕ Add New Lead")
@@ -542,7 +571,7 @@ with st.sidebar:
     if st.button("🚪 Logout", use_container_width=True):
         st.session_state['logged_in'] = False; st.query_params.clear(); st.rerun()
 
-# 2. MAIN SCREEN
+# --- MAIN SCREEN ---
 if page == "🏠 CRM":
     search_q = st.text_input("🔍 Search Leads", placeholder="Type Name or Phone...", label_visibility="collapsed")
     show_live_leads_list(users_df, search_q, None)
