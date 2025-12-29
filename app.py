@@ -13,29 +13,30 @@ import pytz
 # --- CONFIGURATION ---
 st.set_page_config(page_title="TerraTip CRM", layout="wide", page_icon="🏡", initial_sidebar_state="collapsed")
 
-# --- CUSTOM CSS (MOBILE OPTIMIZED & FIXED) ---
+# --- CUSTOM CSS (PROFESSIONAL LIST STYLE) ---
 custom_css = """
     <style>
-        /* 1. RESTORE HAMBURGER MENU */
+        /* 1. RESTORE HEADER */
         header {visibility: visible !important;} 
         .stAppDeployButton {display: none;}
-        [data-testid="stDecoration"] {display: none;} /* Hide the colored bar only */
+        [data-testid="stDecoration"] {display: none;}
 
         .block-container { padding-top: 1rem !important; }
 
-        /* 2. CARD BUTTON STYLING (Strict Alignment) */
+        /* 2. CARD BUTTON STYLING (Standardized Left Align) */
         .stButton button {
             width: 100%;
             text-align: left !important;
-            padding: 12px 16px !important;
+            padding: 16px 20px !important; /* Larger touch target */
             border-radius: 12px !important;
-            background-color: #1E1E24;
+            background-color: #1a1a1d; /* Deep premium black */
             border: 1px solid #333;
-            transition: all 0.2s ease-in-out;
+            transition: transform 0.1s;
             height: auto !important;
             white-space: pre-wrap !important;
             display: block;
-            margin-bottom: 4px;
+            margin-bottom: 8px; /* More spacing between cards */
+            box-shadow: 0 2px 4px rgba(0,0,0,0.2);
         }
         
         .stButton button:active {
@@ -44,22 +45,20 @@ custom_css = """
             transform: scale(0.98);
         }
         
-        /* Inner Text Styling */
+        /* 3. TEXT TYPOGRAPHY INSIDE CARD */
         .stButton button p {
-            font-size: 15px;
-            margin: 0;
-            line-height: 1.4;
+            font-family: 'Source Sans Pro', sans-serif;
             text-align: left !important;
             width: 100%;
+            line-height: 1.5;
         }
 
-        /* 3. POPUP STYLING */
+        /* 4. POPUP STYLING */
         div[data-testid="stDialog"] {
             border-radius: 16px;
-            padding-bottom: 20px;
         }
 
-        /* 4. ACTION BUTTONS */
+        /* 5. ACTION BUTTONS */
         .big-btn {
             display: block; width: 100%; padding: 14px; text-align: center;
             border-radius: 10px; text-decoration: none; font-weight: 600;
@@ -76,12 +75,10 @@ custom_css = """
             line-height: 1.5;
         }
         
-        button:focus { outline: none !important; box-shadow: none !important; }
-        
-        /* Tabs Styling */
-        .stTabs [data-baseweb="tab-list"] { gap: 6px; }
+        /* 6. TAB STYLING */
+        .stTabs [data-baseweb="tab-list"] { gap: 8px; }
         .stTabs [data-baseweb="tab-list"] button {
-            border-radius: 20px; padding: 4px 10px; font-size: 13px;
+            border-radius: 20px; padding: 6px 16px; font-size: 13px; font-weight: 600;
         }
     </style>
 """
@@ -176,7 +173,7 @@ if not st.session_state['logged_in']:
 def big_call_btn(num): return f"""<a href="tel:{num}" class="big-btn call-btn">📞 CALL NOW</a>"""
 def big_wa_btn(num, name): return f"""<a href="https://wa.me/91{num}?text=Namaste {name}" class="big-btn wa-btn" target="_blank">💬 WHATSAPP</a>"""
 
-# --- NEW PIPELINE STATUSES ---
+# --- PIPELINE STATUSES ---
 PIPELINE_OPTS = [
     "Naya Lead", 
     "Ringing / No Response", 
@@ -226,6 +223,7 @@ def open_lead_modal(row_dict, users_df):
         val = str(val).lower().strip()
         for i, x in enumerate(opts):
             if x.lower() == val: return i
+        # Map old statuses to new pipeline
         if "price" in val or "location" in val: return opts.index("Lost (Price / Location)")
         if "visit" in val: return opts.index("Site Visit Scheduled")
         if "busy" in val: return opts.index("Ringing / No Response")
@@ -305,12 +303,14 @@ def render_leads(df, users_df, label_prefix="", is_bulk=False):
         name = str(row.get('Client Name', 'Unknown'))
         raw_status = str(row.get('Status', ''))
         
-        # Display Status Logic
+        # Display Status Logic (Shorten)
         display_status = raw_status
         if "Lost" in raw_status or "Price" in raw_status: display_status = "Lost (Price/Loc)"
         elif "Ringing" in raw_status: display_status = "Ringing"
         elif "Negotiation" in raw_status: display_status = "Negotiation"
         elif "Follow-up" in raw_status: display_status = "Follow-up"
+        elif "Interested" in raw_status: display_status = "Interested"
+        elif "Visit Scheduled" in raw_status: display_status = "Visit Scheduled"
         
         f_col = next((c for c in df.columns if "Follow" in c), None)
         f_val = str(row.get(f_col, '')).strip()
@@ -325,15 +325,15 @@ def render_leads(df, users_df, label_prefix="", is_bulk=False):
         icon = get_status_icon(raw_status)
         short_name = name[:20] + ".." if len(name) > 20 else name
         
-        # Card Layout
-        # Use simple spacing to push date to right. 
-        # Since buttons don't support flexbox perfectly without HTML, we format carefully.
+        # --- UI LAYOUT FIX: LEFT ALIGN PATTERN ---
+        # Line 1: Name (Big)
+        # Line 2: Icon + Status | Date (Small)
         if display_date:
-            label = f"**{short_name}**\n{icon} {display_status} \u2003\u2003\u2003 📅 {display_date}"
+            label = f"**{short_name}**\n{icon} {display_status}  •  📅 {display_date}"
         else:
             label = f"**{short_name}**\n{icon} {display_status}"
         
-        # BULK MODE: Use Columns
+        # BULK MODE
         if is_bulk:
             c_check, c_btn = st.columns([0.15, 0.85])
             with c_check: 
@@ -360,7 +360,6 @@ def show_live_leads_list(users_df, search_q, status_f):
                     (df[assign_col_name] == st.session_state['name']) |
                     (df[assign_col_name] == "TC1")]
 
-    # SEARCH OVERRIDE
     if search_q:
         df_search = df[df.astype(str).apply(lambda x: x.str.contains(search_q, case=False)).any(axis=1)]
         st.info(f"🔍 Found {len(df_search)} results")
@@ -369,36 +368,24 @@ def show_live_leads_list(users_df, search_q, status_f):
 
     today = get_ist_date()
     
-    # BULK MODE TOGGLE CHECK
+    # BULK MODE CHECK
     is_bulk = st.session_state.get('bulk_mode', False)
-    
-    # --- BULK ACTION BAR (Only if active) ---
     if is_bulk:
-        st.warning("⚡ BULK MODE ACTIVE: Select leads below")
-        bk_c1, bk_c2 = st.columns(2)
-        with bk_c1:
-            if st.button("🗑️ DELETE SELECTED", type="primary", use_container_width=True):
-                # Gather selected
-                selected_phones = []
-                for k, v in st.session_state.items():
-                    if k.startswith("sel_") and v:
-                        selected_phones.append(k.split("_")[-1]) # Extract phone from key
-                
-                if not selected_phones: st.error("No leads selected")
-                else:
-                    try:
-                        all_vals = leads_sheet.get_all_values()
-                        # Assuming Phone is col 4 (index 3)
-                        rows_to_del = []
-                        for i, row in enumerate(all_vals):
-                            p_clean = str(row[3]).replace(',', '').replace('.', '')
-                            if p_clean in selected_phones:
-                                rows_to_del.append(i+1)
-                        
-                        rows_to_del.sort(reverse=True)
-                        for r in rows_to_del: leads_sheet.delete_rows(r)
-                        set_feedback(f"Deleted {len(rows_to_del)} leads"); time.sleep(1); st.rerun()
-                    except Exception as e: st.error(str(e))
+        st.warning("⚡ BULK MODE: Select leads to delete")
+        if st.button("🗑️ DELETE SELECTED", type="primary"):
+            selected_phones = [k.split("_")[-1] for k, v in st.session_state.items() if k.startswith("sel_") and v]
+            if not selected_phones: st.error("No leads selected")
+            else:
+                try:
+                    all_vals = leads_sheet.get_all_values()
+                    rows_to_del = []
+                    for i, row in enumerate(all_vals):
+                        p_clean = str(row[3]).replace(',', '').replace('.', '')
+                        if p_clean in selected_phones: rows_to_del.append(i+1)
+                    rows_to_del.sort(reverse=True)
+                    for r in rows_to_del: leads_sheet.delete_rows(r)
+                    set_feedback(f"Deleted {len(rows_to_del)} leads"); time.sleep(1); st.rerun()
+                except Exception as e: st.error(str(e))
 
     def parse_f_date(val):
         if not val or len(str(val)) < 5: return None
@@ -408,15 +395,19 @@ def show_live_leads_list(users_df, search_q, status_f):
     f_col_name = next((c for c in df.columns if "Follow" in c), None)
     df['ParsedDate'] = df[f_col_name].apply(parse_f_date) if f_col_name else None
     
-    # LOGIC MASKS
+    # --- LOGIC MASKS ---
     dead_mask = df['Status'].str.contains("Closed|Booked|Junk|Invalid|Agent", case=False, na=False)
+    
+    # STRICT FILTER: Any 'Price' or 'Location' status is RECYCLE, regardless of date
     recycle_mask = df['Status'].str.contains("Lost|Price|Location|Not Interest", case=False, na=False)
+    
     date_action_mask = (df['ParsedDate'].notna()) & (df['ParsedDate'] <= today)
     future_mask = (df['ParsedDate'].notna()) & (df['ParsedDate'] > today)
     new_lead_mask = df['Status'].str.contains("Naya|New", case=False, na=False)
     
-    # BUCKETS
+    # BUCKET 1: ACTION (Date<=Today OR New) AND NOT (Dead OR Recycle)
     action_df = df[ (date_action_mask | new_lead_mask) & (~dead_mask) & (~recycle_mask) ].copy()
+    
     def get_sort_priority(row):
         if pd.notna(row['ParsedDate']):
             if row['ParsedDate'] < today: return 0 
@@ -426,11 +417,16 @@ def show_live_leads_list(users_df, search_q, status_f):
         action_df['Priority'] = action_df.apply(get_sort_priority, axis=1)
         action_df = action_df.sort_values(by=['Priority'])
 
+    # BUCKET 2: FUTURE (Date>Today) AND NOT (Dead OR Recycle)
     future_df = df[ future_mask & (~dead_mask) & (~recycle_mask) ].copy()
     if not future_df.empty: future_df = future_df.sort_values(by='ParsedDate')
 
+    # BUCKET 3: RECYCLE (Includes Price/Location leads even if they have dates)
     recycle_df = df[ recycle_mask & (~dead_mask) ].copy()
-    history_df = df[dead_mask | ( (~date_action_mask) & (~new_lead_mask) & (~future_mask) & (~recycle_mask) )].copy()
+
+    # BUCKET 4: HISTORY
+    history_mask = dead_mask | ( (~date_action_mask) & (~new_lead_mask) & (~future_mask) & (~recycle_mask) )
+    history_df = df[history_mask].copy()
 
     tab1, tab2, tab3, tab4 = st.tabs([
         f"🔥 Action ({len(action_df)})", 
@@ -539,7 +535,7 @@ with st.sidebar:
     page = st.radio("Navigate", ["🏠 CRM", "📊 Insights", "⚙️ Admin"])
     st.divider()
     
-    # BULK MODE TOGGLE (Managers Only)
+    # BULK MODE TOGGLE
     if st.session_state['role'] == "Manager" and page == "🏠 CRM":
         st.toggle("⚡ Bulk Manager Mode", key="bulk_mode")
         st.caption("Enable to delete multiple leads.")
