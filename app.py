@@ -13,139 +13,122 @@ import pytz
 # --- CONFIGURATION ---
 st.set_page_config(page_title="TerraTip CRM", layout="wide", page_icon="🏡", initial_sidebar_state="collapsed")
 
-# --- PROFESSIONAL UI CSS ---
+# --- PROFESSIONAL CSS (Card & Layout) ---
 custom_css = """
     <style>
-        /* --- 1. NUCLEAR THEME ENFORCEMENT (Fixes Day/Night Issues) --- */
-        :root {
-            --bg-color: #0E1117;
-            --card-bg: #1A1A1D;
-            --text-primary: #FFFFFF;
-            --text-secondary: #A0A0A0;
-            --accent: #FF4B4B;
-            --border: #333333;
-        }
-        
-        /* Force App Background */
+        /* 1. APP THEME */
         .stApp {
-            background-color: var(--bg-color) !important;
-            color: var(--text-primary) !important;
-        }
-        
-        /* Force Inputs to Dark Mode */
-        .stTextInput input, .stSelectbox div[data-baseweb="select"], .stTextArea textarea {
-            background-color: #262730 !important;
+            background-color: #0e1117 !important;
             color: white !important;
-            border: 1px solid #444 !important;
         }
         
-        /* Hide Default Header elements */
+        /* 2. HIDE DEFAULT HEADER & SIDEBAR BUTTON */
         header {visibility: hidden;}
         [data-testid="stSidebarCollapsedControl"] {display: none;}
         
-        /* --- 2. CARD COMPONENT STYLING --- */
-        /* This styles the container we use for each lead */
-        div[data-testid="stVerticalBlock"] > div[data-testid="stVerticalBlock"] {
-            gap: 0.5rem;
-        }
-        
-        .lead-card {
-            background-color: var(--card-bg);
-            border: 1px solid var(--border);
-            border-radius: 10px;
-            padding: 12px 16px;
+        /* 3. CARD BUTTON STYLING (The "One Tap" Card) */
+        .stButton button {
+            width: 100%;
+            text-align: left !important;
+            padding: 16px 20px !important;
+            border-radius: 12px !important;
+            background-color: #1a1a1d !important; /* Dark Card BG */
+            border: 1px solid #333;
             margin-bottom: 8px;
-            box-shadow: 0 2px 4px rgba(0,0,0,0.2);
-        }
-        
-        /* Typography inside cards */
-        .lead-name {
-            font-size: 16px;
-            font-weight: 700;
-            color: #FFFFFF;
-            margin-bottom: 4px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+            transition: all 0.2s ease-in-out;
+            
+            /* Layout for Title/Subtitle */
             display: flex;
-            align-items: center;
-            gap: 8px;
+            flex-direction: column;
+            gap: 6px;
         }
         
-        .lead-tag {
-            background-color: #331405; /* Deep orange tint */
-            color: #FF8C42;
-            padding: 2px 8px;
-            border-radius: 12px;
-            font-size: 11px;
-            font-weight: 600;
-            text-transform: uppercase;
-            letter-spacing: 0.5px;
-            border: 1px solid #5C2B0D;
-            white-space: nowrap;
+        .stButton button:active {
+            background-color: #000 !important;
+            border-color: #ff4b4b;
+            transform: scale(0.98);
         }
         
-        .lead-status {
-            font-size: 13px;
-            color: #A0A0A0;
-            display: flex;
-            align-items: center;
-            gap: 5px;
-        }
-        
-        .lead-date {
-            font-size: 12px;
-            color: #666;
-            margin-left: auto; /* Push to right */
-            font-weight: 500;
+        /* Typography inside the button */
+        .stButton button p {
+            font-family: 'Source Sans Pro', sans-serif;
+            margin: 0;
+            line-height: 1.4;
+            width: 100%;
         }
 
-        /* --- 3. UTILITIES --- */
+        /* 4. UTILITIES */
         /* Custom Menu Button */
         div[data-testid="stHorizontalBlock"] button {
-            border-radius: 8px;
-            border: 1px solid #444;
-            background-color: #262730;
-            color: white;
+            border-radius: 8px; font-weight: bold; border: 1px solid #444;
         }
         
-        /* Tabs */
-        .stTabs [data-baseweb="tab-list"] button {
-            border-radius: 20px;
-            padding: 4px 12px;
-            font-size: 13px;
-            color: #ccc;
-        }
-        .stTabs [data-baseweb="tab-list"] button[aria-selected="true"] {
-            background-color: #333;
-            color: white;
+        /* Input Fields */
+        .stTextInput input, .stSelectbox div[data-baseweb="select"], .stTextArea textarea {
+            background-color: #1a1a1d !important; color: white !important; border: 1px solid #444 !important;
         }
         
-        /* Popup Styling */
-        div[data-testid="stDialog"] { border-radius: 16px; background-color: #1E1E24; }
-        .note-history { 
-            font-size: 13px; 
-            color: #ccc; 
-            background: #121212; 
-            padding: 12px; 
-            border-radius: 8px; 
-            max-height: 150px; 
-            overflow-y: auto; 
-            margin-bottom: 15px; 
-            border-left: 3px solid #555; 
-        }
+        /* Modal */
+        div[data-testid="stDialog"] { border-radius: 16px; background-color: #262730; }
         
-        /* Buttons */
-        .big-btn { display: block; width: 100%; padding: 12px; text-align: center; border-radius: 8px; font-weight: bold; margin-bottom: 10px; text-decoration: none; font-size: 14px;}
+        /* Action Buttons */
+        .big-btn { display: block; width: 100%; padding: 14px; text-align: center; border-radius: 10px; font-weight: bold; margin-bottom: 10px; text-decoration: none; font-size: 16px;}
         .call-btn { background-color: #28a745; color: white !important; }
         .wa-btn { background-color: #25D366; color: white !important; }
+        .note-history { font-size: 13px; color: #bbb; background: #121212; padding: 12px; border-radius: 8px; max-height: 150px; overflow-y: auto; margin-bottom: 15px; border-left: 3px solid #555; }
+        
+        /* Tabs */
+        .stTabs [data-baseweb="tab-list"] button { border-radius: 20px; padding: 6px 16px; font-size: 13px; }
+        
+        /* Global Text Color Fix */
+        label, .stMarkdown p, .stToggle p { color: #eee !important; }
     </style>
 """
 st.markdown(custom_css, unsafe_allow_html=True)
 
-# --- TIMEZONE & STATE ---
+# --- TIMEZONE ---
 IST = pytz.timezone('Asia/Kolkata')
 def get_ist_time(): return datetime.now(IST).strftime("%Y-%m-%d %H:%M")
 def get_ist_date(): return datetime.now(IST).date()
 
 if 'current_page' not in st.session_state: st.session_state['current_page'] = "CRM"
+
+# --- TIME AGO LOGIC (The "Relative Time" Fix) ---
+def get_time_ago(last_interaction_str):
+    if not last_interaction_str or len(str(last_interaction_str)) < 5:
+        return "New"
+    
+    try:
+        # Try parsing with time
+        last_dt = datetime.strptime(str(last_interaction_str).strip(), "%Y-%m-%d %H:%M")
+    except:
+        try:
+            # Fallback to just date
+            last_dt = datetime.strptime(str(last_interaction_str).strip(), "%Y-%m-%d")
+        except:
+            return ""
+
+    # Localize if naive
+    if last_dt.tzinfo is None:
+        last_dt = IST.localize(last_dt)
+        
+    now = datetime.now(IST)
+    diff = now - last_dt
+    
+    seconds = diff.total_seconds()
+    days = diff.days
+
+    if days == 0:
+        if seconds < 60: return "Just now"
+        if seconds < 3600: return f"{int(seconds // 60)}m ago"
+        return f"{int(seconds // 3600)}h ago"
+    elif days == 1:
+        return "Yesterday"
+    elif days < 7:
+        return f"{days}d ago"
+    else:
+        return last_dt.strftime("%d-%b") # e.g. 25-Dec
 
 # --- DATABASE ---
 @st.cache_resource
@@ -228,13 +211,12 @@ def get_status_icon(status):
     s = str(status).lower().strip()
     if "naya" in s: return "🆕"
     if "ring" in s: return "📞"
-    if "visit" in s: return "🗓️"
+    if "visit" in s: return "🗓"
     if "lost" in s or "price" in s: return "📉"
     if "interest" in s: return "🔥"
-    if "junk" in s: return "🗑️"
     return "⚪"
 
-# --- NAVIGATION MENU ---
+# --- MENU ---
 @st.dialog("🍔 Navigation")
 def open_main_menu():
     st.markdown(f"**👤 {st.session_state['name']}**")
@@ -259,7 +241,7 @@ def open_main_menu():
     st.divider()
     if st.button("🚪 Logout", use_container_width=True): st.session_state['logged_in'] = False; st.rerun()
 
-# --- LEAD DETAILS MODAL ---
+# --- LEAD MODAL ---
 @st.dialog("📋 Lead Details")
 def open_lead_modal(row_dict, users_df):
     phone = str(row_dict.get('Phone', '')).replace(',', '').replace('.', '')
@@ -324,14 +306,18 @@ def open_lead_modal(row_dict, users_df):
                 if final_date:
                     updates.append({'range': gspread.utils.rowcol_to_a1(r, get_idx("Follow") or 15), 'values': [[str(final_date)]]})
                 
+                # Update TimeStamp
+                t_idx = get_idx("Last Call")
+                if t_idx: updates.append({'range': gspread.utils.rowcol_to_a1(r, t_idx), 'values': [[get_ist_time()]]})
+                
                 if new_assign:
                     updates.append({'range': gspread.utils.rowcol_to_a1(r, get_idx("Assign") or 7), 'values': [[new_assign]]})
 
                 leads_sheet.batch_update(updates); st.rerun()
         except Exception as e: st.error(str(e))
 
-# --- CARD RENDERER (THE PRO UI) ---
-def render_lead_card(row, users_df, label_prefix=""):
+# --- RENDER LEAD CARD ---
+def render_lead_card(row, users_df, label_prefix="", is_bulk=False):
     phone = str(row.get('Phone', '')).replace(',', '').replace('.', '')
     name = str(row.get('Client Name', 'Unknown'))
     raw_status = str(row.get('Status', ''))
@@ -339,40 +325,32 @@ def render_lead_card(row, users_df, label_prefix=""):
     # Tag Logic
     tag_col = next((c for c in row.index if "Tag" in c or "Label" in c), None)
     tag_val = str(row.get(tag_col, '')).strip() if tag_col else ""
-    tag_html = f"<span class='lead-tag'>{tag_val}</span>" if tag_val and tag_val.lower() != "nan" else ""
+    tag_display = f" | 🏷️ {tag_val}" if tag_val and tag_val.lower() != "nan" else ""
     
-    # Status & Date
     display_status = "Lost" if "Lost" in raw_status or "Price" in raw_status else raw_status
     if "Ringing" in raw_status: display_status = "Ringing"
     icon = get_status_icon(raw_status)
     
-    f_val = str(row.get(next((c for c in row.index if "Follow" in c), 'Follow'), '')).strip()
-    display_date = ""
-    if len(f_val) > 5:
-        try:
-            d = datetime.strptime(f_val, "%Y-%m-%d").date()
-            display_date = "Today" if d == datetime.now(IST).date() else d.strftime('%d %b')
-        except: pass
+    # Time Ago Logic (Replaces Date)
+    t_col = next((c for c in row.index if "Last Call" in c), None)
+    t_val = str(row.get(t_col, '')).strip() if t_col else ""
+    time_ago = get_time_ago(t_val)
     
-    # --- THE CARD HTML ---
-    # We use Markdown to render the nice visuals
-    card_html = f"""
-    <div class="lead-card">
-        <div class="lead-name">
-            {name} {tag_html}
-        </div>
-        <div class="lead-status">
-            <span>{icon} {display_status}</span>
-            <span class="lead-date">📅 {display_date}</span>
-        </div>
-    </div>
-    """
-    st.markdown(card_html, unsafe_allow_html=True)
+    # Clean Truncated Name
+    short_name = name[:20] + ".." if len(name) > 20 else name
     
-    # --- THE INTERACTION ---
-    # A small button below the card to trigger the modal
-    if st.button("Open", key=f"btn_{label_prefix}_{phone}", use_container_width=True):
-        open_lead_modal(row.to_dict(), users_df)
+    # THE ONE-TAP CARD LABEL
+    # Line 1: Name + Tag
+    # Line 2: Icon Status ......... Time Ago
+    # We use a special separator for visual spacing
+    label = f"**{short_name}**{tag_display}\n{icon} {display_status} \u2003\u2003\u2003\u2003 ⏱ {time_ago}"
+    
+    if is_bulk:
+        c1, c2 = st.columns([0.15, 0.85])
+        c1.checkbox("", key=f"sel_{label_prefix}_{phone}")
+        if c2.button(label, key=f"btn_{label_prefix}_{phone}", use_container_width=True): open_lead_modal(row.to_dict(), users_df)
+    else:
+        if st.button(label, key=f"btn_{label_prefix}_{phone}", use_container_width=True): open_lead_modal(row.to_dict(), users_df)
 
 # --- LIVE FEED ---
 @st.fragment(run_every=30)
@@ -398,27 +376,38 @@ def show_crm(users_df, search_q):
     
     is_bulk = False
     if st.session_state['role'] == "Manager":
-        with c_toggle: is_bulk = st.toggle("⚡ Bulk Mode")
+        with c_toggle: is_bulk = st.toggle("⚡ Bulk")
     
-    # Bulk Mode (Simple List)
+    # Bulk Action Bar
     if is_bulk:
-        st.warning("Bulk Mode: Select checkboxes below")
+        st.info("Select leads below")
         b1, b2 = st.columns(2)
         with b1:
-            label_text = st.text_input("Label Text", placeholder="VIP", label_visibility="collapsed")
+            label_text = st.text_input("Label", placeholder="VIP", label_visibility="collapsed")
             if st.button("Apply Label"):
                 phones = [k.split("_")[-1] for k, v in st.session_state.items() if k.startswith("sel_") and v]
                 if phones and label_text:
-                    # (Bulk Label Logic - abbreviated for space, same as before)
-                    st.toast("Labels Applied!"); time.sleep(1); st.rerun()
+                    try:
+                        h = leads_sheet.row_values(1)
+                        col_idx = next((i+1 for i,v in enumerate(h) if "Tag" in v or "Label" in v), None)
+                        if not col_idx: st.error("No Tag column")
+                        else:
+                            all_v = leads_sheet.get_all_values(); updates = []
+                            for i, r in enumerate(all_v):
+                                if len(r)>3 and str(r[3]).replace(',','').replace('.','') in phones:
+                                    updates.append({'range': gspread.utils.rowcol_to_a1(i+1, col_idx), 'values': [[label_text]]})
+                            if updates: leads_sheet.batch_update(updates); st.success("Done!"); time.sleep(1); st.rerun()
+                    except: st.error("Error")
         with b2:
-            if st.button("🗑️ Delete Selected"):
-                # (Bulk Delete Logic)
-                st.toast("Deleted!"); time.sleep(1); st.rerun()
-                
-        # Render Checkbox List for Bulk
-        # Logic to fetch list...
-        pass 
+            if st.button("🗑️ Delete"):
+                phones = [k.split("_")[-1] for k, v in st.session_state.items() if k.startswith("sel_") and v]
+                if phones:
+                    try:
+                        all_v = leads_sheet.get_all_values()
+                        to_del = [i+1 for i,r in enumerate(all_v) if len(r)>3 and str(r[3]).replace(',','').replace('.','') in phones]
+                        for r in sorted(to_del, reverse=True): leads_sheet.delete_rows(r)
+                        st.success("Deleted!"); time.sleep(1); st.rerun()
+                    except: st.error("Error")
 
     def parse_date(v):
         try: return datetime.strptime(str(v).strip(), "%Y-%m-%d").date()
@@ -441,7 +430,7 @@ def show_crm(users_df, search_q):
                 for i, row in dframe.iterrows():
                     c_ch, c_info = st.columns([0.15, 0.85])
                     c_ch.checkbox("", key=f"sel_{prefix}_{row['Phone']}")
-                    with c_info: render_lead_card(row, users_df, prefix)
+                    with c_info: render_lead_card(row, users_df, prefix, True)
             else:
                 for i, row in dframe.iterrows(): render_lead_card(row, users_df, prefix)
 
@@ -463,11 +452,39 @@ def show_admin(users_df):
         
         st.divider()
         st.subheader("📥 Upload CSV")
-        # (Bulk Upload Logic same as previous)
+        ag = st.multiselect("Assign", users_df['Username'].tolist())
+        up = st.file_uploader("CSV", type=['csv'])
+        if up and st.button("Upload"):
+            if not ag: st.error("Select Agent!")
+            else:
+                try:
+                    try: df_up = pd.read_csv(up, encoding='utf-8')
+                    except: df_up = pd.read_csv(up, encoding='ISO-8859-1')
+                    cols = [c.lower() for c in df_up.columns]
+                    n_i = next((i for i, c in enumerate(cols) if "name" in c), -1)
+                    p_i = next((i for i, c in enumerate(cols) if "phone" in c or "mobile" in c), -1)
+                    if n_i == -1 or p_i == -1: st.error("Column missing")
+                    else:
+                        nc = df_up.columns[n_i]; pc = df_up.columns[p_i]
+                        ex_phones = set(re.sub(r'\D', '', str(p))[-10:] for p in leads_sheet.col_values(4))
+                        rows = []; cyc = itertools.cycle(ag); ts = get_ist_time()
+                        for _, r in df_up.iterrows():
+                            p_clean = re.sub(r'\D', '', str(r[pc]))[-10:]
+                            if len(p_clean)==10 and p_clean not in ex_phones:
+                                rows.append([generate_lead_id(), ts, r[nc], p_clean, "Upload", "", next(cyc), "Naya Lead", "", ts, "", "", "", "", ""])
+                                ex_phones.add(p_clean)
+                        if rows: leads_sheet.append_rows(rows); st.success(f"Added {len(rows)}"); time.sleep(1); st.rerun()
+                except Exception as e: st.error(str(e))
         
     with c2:
         st.subheader("Team")
         st.dataframe(users_df[['Name','Role']], hide_index=True)
+        opts = [x for x in users_df['Username'].unique() if x != st.session_state['username']]
+        if opts:
+            d_u = st.selectbox("Delete User", opts)
+            if st.button("❌ Delete"):
+                cell = users_sheet.find(d_u)
+                users_sheet.delete_rows(cell.row); st.success("Deleted"); st.rerun()
 
 # --- ROUTER ---
 c_search, c_menu = st.columns([0.85, 0.15])
@@ -485,8 +502,7 @@ if st.session_state['current_page'] == "CRM":
     q = search_query if 'search_query' in locals() and search_query else None
     show_crm(users_df, q)
 elif st.session_state['current_page'] == "Insights":
-    # Insights Logic
-    pass
+    st.title("📊 Stats"); st.info("Analytics coming soon.")
 elif st.session_state['current_page'] == "Admin":
     if st.session_state['role'] == "Manager": show_admin(users_df)
     else: st.error("⛔ Access Denied")
