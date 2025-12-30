@@ -13,7 +13,7 @@ import pytz
 # --- CONFIGURATION ---
 st.set_page_config(page_title="TerraTip CRM", layout="wide", page_icon="🏡", initial_sidebar_state="collapsed")
 
-# --- CUSTOM CSS (MOBILE APP STYLE) ---
+# --- CUSTOM CSS ---
 custom_css = """
     <style>
         /* 1. FORCE DARK MODE */
@@ -34,7 +34,6 @@ custom_css = """
         }
         
         /* 4. MENU BUTTON STYLING */
-        /* Style the 'Menu' button to look distinct */
         div[data-testid="stHorizontalBlock"] button {
             border-radius: 8px;
             font-weight: bold;
@@ -193,7 +192,6 @@ def open_main_menu():
     st.caption(f"Role: {st.session_state['role']}")
     st.divider()
     
-    # 1. Page Navigation
     col_nav1, col_nav2, col_nav3 = st.columns(3)
     if col_nav1.button("🏠 CRM", use_container_width=True): 
         st.session_state['current_page'] = "CRM"; st.rerun()
@@ -204,7 +202,6 @@ def open_main_menu():
         
     st.divider()
     
-    # 2. Quick Add Lead (Only in Menu)
     with st.expander("➕ Add New Lead", expanded=False):
         with st.form("menu_add_lead", clear_on_submit=True):
             name = st.text_input("Name")
@@ -392,9 +389,37 @@ def show_crm(users_df, search_q):
         with c_toggle:
             is_bulk = st.toggle("⚡ Bulk Mode")
     
+    # --- BULK TOOLBAR (ASSIGN + DELETE) ---
     if is_bulk:
-        st.warning("Select leads below to delete")
-        if st.button("🗑️ DELETE SELECTED", type="primary"):
+        st.warning("⚡ Selecting multiple leads...")
+        c_act1, c_act2 = st.columns(2)
+        with c_act1:
+            # Assign Tool
+            assign_target = st.selectbox("Assign To:", users_df['Username'].unique(), label_visibility="collapsed")
+        with c_act2:
+            if st.button("Apply Assign", use_container_width=True):
+                selected_phones = [k.split("_")[-1] for k, v in st.session_state.items() if k.startswith("sel_") and v]
+                if selected_phones:
+                    try:
+                        all_vals = leads_sheet.get_all_values()
+                        updates = []
+                        # Assume Assign is col 7 (Index 6)
+                        # Need to be precise with column index or find it dynamically
+                        h = leads_sheet.row_values(1)
+                        assign_idx = next(i for i,v in enumerate(h) if "assign" in v.lower()) + 1
+                        
+                        for i, row in enumerate(all_vals):
+                            p_clean = str(row[3]).replace(',', '').replace('.', '') # Phone is usually col 4 (index 3)
+                            if p_clean in selected_phones:
+                                updates.append({'range': gspread.utils.rowcol_to_a1(i+1, assign_idx), 'values': [[assign_target]]})
+                        
+                        if updates:
+                            leads_sheet.batch_update(updates)
+                            st.success(f"Assigned {len(updates)} leads to {assign_target}!")
+                            time.sleep(1); st.rerun()
+                    except Exception as e: st.error(str(e))
+
+        if st.button("🗑️ DELETE SELECTED", type="primary", use_container_width=True):
             selected_phones = [k.split("_")[-1] for k, v in st.session_state.items() if k.startswith("sel_") and v]
             if not selected_phones: st.error("No leads selected")
             else:
@@ -541,4 +566,4 @@ elif st.session_state['current_page'] == "Admin":
     if st.session_state['role'] == "Manager":
         show_admin(users_df)
     else:
-        st.error("⛔ Access Denied")
+        st.error("⛔ Access Denied: Managers Only")
