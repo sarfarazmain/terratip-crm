@@ -13,97 +13,96 @@ import pytz
 # --- CONFIGURATION ---
 st.set_page_config(page_title="TerraTip CRM", layout="wide", page_icon="🏡", initial_sidebar_state="collapsed")
 
-# --- CUSTOM CSS (FIXING VISIBILITY & UI) ---
+# --- CUSTOM CSS (VISIBILITY FIX) ---
 custom_css = """
     <style>
-        /* 1. SIDEBAR BUTTON FIX (Floating Bubble) */
-        /* This forces the menu button to be visible, dark, and floating top-left */
+        /* 1. AGGRESSIVE DARK MODE ENFORCEMENT */
+        /* Force the whole app to be dark, ignoring system settings */
+        .stApp {
+            background-color: #0e1117 !important;
+            color: #ffffff !important;
+        }
+        
+        /* Force inputs (Search/Text) to be dark with white text */
+        div[data-baseweb="input"] {
+            background-color: #262730 !important;
+            border-color: #444 !important;
+        }
+        input.st-ai {
+            color: white !important;
+        }
+        
+        /* 2. SIDEBAR BUTTON (THE FIX) */
+        /* We make it a solid, visible floating button in the top left */
         [data-testid="stSidebarCollapsedControl"] {
             display: flex !important;
+            visibility: visible !important;
+            background-color: #262730 !important; /* Solid dark grey */
+            color: #ffffff !important; /* Bright white icon */
+            border: 2px solid #444 !important;
+            border-radius: 12px !important;
+            width: 45px !important;
+            height: 45px !important;
             justify-content: center;
             align-items: center;
-            color: white !important;
-            background-color: #1a1a1d !important; /* Dark background */
-            border: 1px solid #444;
-            border-radius: 50%;
-            width: 44px;
-            height: 44px;
-            box-shadow: 0 4px 6px rgba(0,0,0,0.3);
-            z-index: 999999 !important;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.5) !important;
+            
+            /* Pin it to the top-left, independent of the header */
             position: fixed !important;
-            top: 12px !important;
-            left: 12px !important;
+            top: 15px !important;
+            left: 15px !important;
+            z-index: 1000001 !important;
+        }
+        
+        /* Increase icon size inside the button */
+        [data-testid="stSidebarCollapsedControl"] svg {
+            width: 24px !important;
+            height: 24px !important;
+            fill: white !important;
         }
 
-        /* 2. HEADER GHOSTING */
-        /* Make header transparent but keep it there so the button exists */
+        /* 3. HEADER REMOVAL */
+        /* Remove the top bar entirely so it doesn't block anything */
         header[data-testid="stHeader"] {
-            background: transparent !important;
-            height: 0px !important;
+            display: none !important;
         }
-        [data-testid="stToolbar"] { display: none !important; } /* Hide GitHub/Menu dots */
-        [data-testid="stDecoration"] { display: none !important; }
+        [data-testid="stToolbar"] {
+            display: none !important;
+        }
 
-        /* 3. CARD STYLING (Force White Text) */
+        /* 4. LAYOUT ADJUSTMENT */
+        /* Push the main content down so the button doesn't overlap the search bar */
+        .block-container { 
+            padding-top: 5rem !important; 
+        }
+
+        /* 5. CARD STYLING (Standardized) */
         .stButton button {
             width: 100%;
             text-align: left !important;
-            padding: 16px 20px !important;
+            padding: 16px 18px !important;
             border-radius: 12px !important;
-            background-color: #1a1a1d !important; /* Always Dark Card */
+            background-color: #1a1a1d !important;
             border: 1px solid #333;
-            transition: transform 0.1s;
-            height: auto !important;
-            white-space: pre-wrap !important;
-            display: block;
             margin-bottom: 8px;
-            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            box-shadow: 0 2px 4px rgba(0,0,0,0.2);
         }
         
-        .stButton button:active {
-            background-color: #000 !important;
-            border-color: #ff4b4b;
-            transform: scale(0.98);
-        }
-        
-        /* FORCE ALL TEXT INSIDE BUTTONS TO BE WHITE */
-        /* This overrides the phone's Light Mode text color */
-        .stButton button p, .stButton button div, .stButton button span {
+        .stButton button p {
             font-family: 'Source Sans Pro', sans-serif;
-            color: #ffffff !important; 
-            -webkit-text-fill-color: #ffffff !important;
-            text-align: left !important;
+            color: #ffffff !important;
+            font-size: 15px;
+            margin: 0;
             line-height: 1.5;
         }
 
-        /* 4. LAYOUT SPACING */
-        .block-container { 
-            padding-top: 4rem !important; /* Space for the floating menu button */
-        }
-
-        /* 5. POPUP & UTILS */
-        div[data-testid="stDialog"] { border-radius: 16px; }
-        
-        .note-history {
-            font-size: 13px; color: #aaa; background: #121212;
-            padding: 12px; border-radius: 8px; max-height: 150px;
-            overflow-y: auto; margin-bottom: 15px; border-left: 4px solid #555;
-        }
-        
-        /* Tabs */
-        .stTabs [data-baseweb="tab-list"] button {
-            border-radius: 20px; padding: 6px 12px; font-size: 13px;
-        }
-        
-        /* Action Buttons */
-        .big-btn {
-            display: block; width: 100%; padding: 14px; text-align: center;
-            border-radius: 10px; text-decoration: none; font-weight: 600;
-            font-size: 16px; margin-bottom: 12px;
-            box-shadow: 0 4px 6px rgba(0,0,0,0.2);
-        }
+        /* 6. UTILS */
+        div[data-testid="stDialog"] { border-radius: 16px; background-color: #262730; }
+        .big-btn { display: block; width: 100%; padding: 14px; text-align: center; border-radius: 10px; font-weight: bold; margin-bottom: 10px; text-decoration: none;}
         .call-btn { background-color: #28a745; color: white !important; }
         .wa-btn { background-color: #25D366; color: white !important; }
+        .note-history { font-size: 13px; color: #ccc; background: #121212; padding: 12px; border-radius: 8px; max-height: 150px; overflow-y: auto; margin-bottom: 15px; border-left: 4px solid #555; }
+        .stTabs [data-baseweb="tab-list"] button { border-radius: 20px; padding: 6px 12px; font-size: 13px; }
     </style>
 """
 st.markdown(custom_css, unsafe_allow_html=True)
@@ -199,19 +198,12 @@ def big_wa_btn(num, name): return f"""<a href="https://wa.me/91{num}?text=Namast
 
 # --- PIPELINE STATUSES ---
 PIPELINE_OPTS = [
-    "Naya Lead", 
-    "Ringing / No Response", 
-    "Call Back Later", 
-    "Interested / Send Details", 
-    "Follow-up / Thinking", 
-    "Site Visit Scheduled", 
-    "Negotiation / Visit Done", 
-    "Sale Closed", 
-    "Lost (Price / Location)", 
-    "Junk / Invalid / Broker"
+    "Naya Lead", "Ringing / No Response", "Call Back Later", 
+    "Interested / Send Details", "Follow-up / Thinking", 
+    "Site Visit Scheduled", "Negotiation / Visit Done", 
+    "Sale Closed", "Lost (Price / Location)", "Junk / Invalid / Broker"
 ]
 
-# --- ICON HELPER ---
 def get_status_icon(status):
     s = str(status).lower().strip()
     if "naya" in s or "new" in s: return "🆕"
@@ -315,10 +307,10 @@ def open_lead_modal(row_dict, users_df):
                 time.sleep(0.5); st.rerun()
         except Exception as e: st.error(f"Error: {e}")
 
-# --- REUSABLE LEAD RENDERER ---
+# --- LEAD RENDERER ---
 def render_leads(df, users_df, label_prefix="", is_bulk=False):
     if df.empty:
-        st.info("✅ No leads in this section.")
+        st.info("✅ No leads here.")
         return
 
     for i, row in df.iterrows():
@@ -327,12 +319,10 @@ def render_leads(df, users_df, label_prefix="", is_bulk=False):
         raw_status = str(row.get('Status', ''))
         
         display_status = raw_status
-        if "Lost" in raw_status or "Price" in raw_status: display_status = "Lost (Price/Loc)"
+        if "Lost" in raw_status: display_status = "Lost (Price/Loc)"
         elif "Ringing" in raw_status: display_status = "Ringing"
         elif "Negotiation" in raw_status: display_status = "Negotiation"
         elif "Follow-up" in raw_status: display_status = "Follow-up"
-        elif "Interested" in raw_status: display_status = "Interested"
-        elif "Visit Scheduled" in raw_status: display_status = "Visit Scheduled"
         
         f_col = next((c for c in df.columns if "Follow" in c), None)
         f_val = str(row.get(f_col, '')).strip()
@@ -354,8 +344,7 @@ def render_leads(df, users_df, label_prefix="", is_bulk=False):
         
         if is_bulk:
             c_check, c_btn = st.columns([0.15, 0.85])
-            with c_check: 
-                st.checkbox("", key=f"sel_{label_prefix}_{phone}")
+            with c_check: st.checkbox("", key=f"sel_{label_prefix}_{phone}")
             with c_btn:
                 if st.button(label, key=f"btn_{label_prefix}_{phone}", use_container_width=True):
                     open_lead_modal(row.to_dict(), users_df)
@@ -378,7 +367,6 @@ def show_live_leads_list(users_df, search_q, status_f):
                     (df[assign_col_name] == st.session_state['name']) |
                     (df[assign_col_name] == "TC1")]
 
-    # SEARCH
     if search_q:
         df_search = df[df.astype(str).apply(lambda x: x.str.contains(search_q, case=False)).any(axis=1)]
         st.info(f"🔍 Found {len(df_search)} results")
@@ -387,32 +375,33 @@ def show_live_leads_list(users_df, search_q, status_f):
 
     today = get_ist_date()
     
-    # --- UI: SEARCH BAR + BULK TOGGLE (ROW) ---
-    c_search, c_bulk = st.columns([0.7, 0.3])
+    # --- BULK TOGGLE & SEARCH ROW ---
+    c_search, c_toggle = st.columns([0.6, 0.4])
     with c_search:
-        # We put search input logic in Main Screen loop, but used here for variable
-        pass 
-        
-    # --- BULK MODE TOGGLE (ON MAIN SCREEN) ---
+        # Placeholder for visual alignment
+        pass
+    
     is_bulk = False
     if st.session_state['role'] == "Manager":
-        is_bulk = st.toggle("⚡ Bulk Mode")
-        if is_bulk:
-            st.warning("Select leads below to delete")
-            if st.button("🗑️ DELETE", type="primary", use_container_width=True):
-                selected_phones = [k.split("_")[-1] for k, v in st.session_state.items() if k.startswith("sel_") and v]
-                if not selected_phones: st.error("No leads")
-                else:
-                    try:
-                        all_vals = leads_sheet.get_all_values()
-                        rows_to_del = []
-                        for i, row in enumerate(all_vals):
-                            p_clean = str(row[3]).replace(',', '').replace('.', '')
-                            if p_clean in selected_phones: rows_to_del.append(i+1)
-                        rows_to_del.sort(reverse=True)
-                        for r in rows_to_del: leads_sheet.delete_rows(r)
-                        set_feedback(f"Deleted {len(rows_to_del)} leads"); time.sleep(1); st.rerun()
-                    except Exception as e: st.error(str(e))
+        with c_toggle:
+            is_bulk = st.toggle("⚡ Bulk Mode")
+    
+    if is_bulk:
+        st.warning("Select leads below to delete")
+        if st.button("🗑️ DELETE SELECTED", type="primary"):
+            selected_phones = [k.split("_")[-1] for k, v in st.session_state.items() if k.startswith("sel_") and v]
+            if not selected_phones: st.error("No leads selected")
+            else:
+                try:
+                    all_vals = leads_sheet.get_all_values()
+                    rows_to_del = []
+                    for i, row in enumerate(all_vals):
+                        p_clean = str(row[3]).replace(',', '').replace('.', '')
+                        if p_clean in selected_phones: rows_to_del.append(i+1)
+                    rows_to_del.sort(reverse=True)
+                    for r in rows_to_del: leads_sheet.delete_rows(r)
+                    set_feedback(f"Deleted {len(rows_to_del)} leads"); time.sleep(1); st.rerun()
+                except Exception as e: st.error(str(e))
 
     def parse_f_date(val):
         if not val or len(str(val)) < 5: return None
@@ -424,7 +413,6 @@ def show_live_leads_list(users_df, search_q, status_f):
     
     dead_mask = df['Status'].str.contains("Closed|Booked|Junk|Invalid|Agent", case=False, na=False)
     recycle_mask = df['Status'].str.contains("Lost|Price|Location|Not Interest", case=False, na=False)
-    
     date_action_mask = (df['ParsedDate'].notna()) & (df['ParsedDate'] <= today)
     future_mask = (df['ParsedDate'].notna()) & (df['ParsedDate'] > today)
     new_lead_mask = df['Status'].str.contains("Naya|New", case=False, na=False)
@@ -543,7 +531,7 @@ def show_admin(users_df):
             dt = st.selectbox("Delete", opts)
             if st.button("❌ Delete"): users_sheet.delete_rows(users_sheet.find(dt).row); set_feedback(f"Deleted {dt}"); st.rerun()
 
-# --- SIDEBAR (HAMBURGER) ---
+# --- SIDEBAR ---
 with st.sidebar:
     st.markdown(f"### 👤 {st.session_state['name']}")
     st.caption(f"Role: {st.session_state['role']}")
@@ -579,7 +567,6 @@ with st.sidebar:
 
 # --- MAIN SCREEN ---
 if page == "🏠 CRM":
-    # Search is now clear of the header
     search_q = st.text_input("🔍 Search Leads", placeholder="Type Name or Phone...", label_visibility="collapsed")
     show_live_leads_list(users_df, search_q, None)
 
