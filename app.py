@@ -20,141 +20,51 @@ except ImportError:
 # --- CONFIGURATION ---
 st.set_page_config(page_title="TerraTip CRM", layout="wide", page_icon="🏡", initial_sidebar_state="collapsed")
 
-# --- 🎨 NUCLEAR CSS RESET (THE FIX) ---
+# --- 1. MAIN APP STYLING (Background, Inputs, Modals) ---
+# This styles everything EXCEPT the cards
 custom_css = """
     <style>
-        /* 1. FORCE DARK THEME GLOBALLY */
-        :root {
-            --primary: #FF4B4B;
-            --bg-dark: #0E1117;
-            --card-dark: #1E1E24;
-            --text-white: #FFFFFF;
-            --text-grey: #A0A0A0;
-            --border-color: #333333;
-        }
-        
-        /* Override Streamlit Defaults */
+        /* Force Dark Mode Globally */
         .stApp {
-            background-color: var(--bg-dark) !important;
-            color: var(--text-white) !important;
-            font-family: 'Source Sans Pro', sans-serif;
+            background-color: #0e1117 !important;
+            color: #ffffff !important;
         }
         
-        /* 2. CARD DESIGN SYSTEM (HTML) */
-        
-        /* Reset Link Styles (Fixes the "Blue Text" issue) */
-        a.card-link {
-            text-decoration: none !important;
-            color: inherit !important;
-            display: block;
-        }
-        
-        .lead-card {
-            background-color: var(--card-dark);
-            border: 1px solid var(--border-color);
-            border-radius: 12px;
-            padding: 14px 16px;
-            margin-bottom: 12px;
-            box-shadow: 0 4px 6px rgba(0,0,0,0.2);
-            transition: transform 0.15s ease, border-color 0.15s;
-            position: relative;
-            overflow: hidden;
-        }
-        
-        .lead-card:hover {
-            border-color: #666;
-            background-color: #25252b;
-            transform: translateY(-1px);
-        }
-        
-        /* Left Color Strip */
-        .status-strip {
-            position: absolute; left: 0; top: 0; bottom: 0; width: 4px;
-        }
-        .strip-red { background-color: #FF4B4B; }
-        .strip-orange { background-color: #FFA500; }
-        .strip-green { background-color: #00C851; }
-        .strip-grey { background-color: #4B5563; }
-
-        /* Typography */
-        .card-header {
-            display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;
-        }
-        .card-name {
-            font-size: 16px; font-weight: 700; color: #fff;
-            white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 60%;
-        }
-        .card-tag {
-            font-size: 10px; font-weight: 700; text-transform: uppercase;
-            padding: 3px 8px; border-radius: 10px;
-            background-color: #3d2212; color: #ff9f43; border: 1px solid #5e3718;
-            white-space: nowrap;
-        }
-        
-        .card-body {
-            font-size: 14px; color: #ccc; margin-bottom: 10px;
-            display: flex; align-items: center; gap: 6px;
-        }
-        
-        .card-footer {
-            display: flex; justify-content: space-between; align-items: center;
-            border-top: 1px solid #333; padding-top: 8px;
-            font-size: 12px; color: #888; font-family: monospace;
-        }
-
-        /* 3. MODAL & INPUT FIXES (Fixes Legibility) */
-        
-        /* Force Modal Background to Dark */
-        div[data-testid="stDialog"] {
-            background-color: #1E1E24 !important;
-            border: 1px solid #444;
-            color: white !important;
-        }
+        /* Hide Default Header */
+        header {visibility: hidden;}
+        [data-testid="stSidebarCollapsedControl"] {display: none;}
         
         /* Fix Input Fields (White text on Dark BG) */
         .stTextInput input, .stSelectbox div[data-baseweb="select"], .stTextArea textarea {
-            background-color: #2d2d35 !important;
+            background-color: #1E1E24 !important;
             color: white !important;
             border: 1px solid #444 !important;
         }
         
-        /* Fix Dropdown Menu Items */
-        ul[data-baseweb="menu"] {
-            background-color: #2d2d35 !important;
+        /* Fix Modal Background */
+        div[data-testid="stDialog"] {
+            background-color: #1E1E24 !important;
             color: white !important;
         }
         
-        /* Fix Label Text Colors */
-        label, p, .stMarkdown {
-            color: #ddd !important;
-        }
+        /* Fix Labels */
+        label, p, .stMarkdown { color: #eee !important; }
         
-        /* 4. UTILS */
-        /* Hide Header/Sidebar */
-        header {visibility: hidden;}
-        [data-testid="stSidebarCollapsedControl"] {display: none;}
-        
-        /* Buttons */
+        /* Action Buttons */
         .big-btn { display: block; width: 100%; padding: 12px; text-align: center; border-radius: 8px; font-weight: bold; margin-bottom: 10px; text-decoration: none; font-size: 15px; color: white !important; }
         .call-btn { background-color: #28a745; }
         .wa-btn { background-color: #25D366; }
         
+        /* Tabs */
+        .stTabs [data-baseweb="tab-list"] button { border-radius: 16px; padding: 4px 12px; font-size: 12px; }
+        
         /* Menu Button */
         div[data-testid="stHorizontalBlock"] button { border-radius: 8px; font-weight: bold; border: 1px solid #444; }
-        
-        /* Tab Text */
-        .stTabs [data-baseweb="tab-list"] button {
-            color: #aaa !important;
-        }
-        .stTabs [data-baseweb="tab-list"] button[aria-selected="true"] {
-            color: white !important;
-            background-color: #333 !important;
-        }
     </style>
 """
 st.markdown(custom_css, unsafe_allow_html=True)
 
-# --- TIMEZONE & STATE ---
+# --- TIMEZONE ---
 IST = pytz.timezone('Asia/Kolkata')
 def get_ist_time(): return datetime.now(IST).strftime("%Y-%m-%d %H:%M")
 def get_ist_date(): return datetime.now(IST).date()
@@ -262,7 +172,7 @@ def get_status_icon(status):
     s = str(status).lower().strip()
     if "naya" in s: return "⚡"
     if "ring" in s: return "📞"
-    if "visit" in s: return "🗓️"
+    if "visit" in s: return "🗓"
     if "lost" in s or "price" in s: return "📉"
     if "interest" in s: return "🔥"
     return "⚪"
@@ -358,9 +268,75 @@ def open_lead_modal(row_dict, users_df):
                 leads_sheet.batch_update(updates); st.rerun()
         except Exception as e: st.error(str(e))
 
-# --- HTML CARD GENERATOR (PRO DARK MODE) ---
+# --- 2. CARD CSS INJECTOR (THE FIX) ---
+# This style block travels WITH the cards into the iframe
+CARD_STYLE = """
+<style>
+    body {
+        margin: 0;
+        padding: 0;
+        font-family: sans-serif;
+        background-color: transparent; /* Allows main app bg to show */
+    }
+    a.card-link {
+        text-decoration: none;
+        color: inherit;
+        display: block;
+    }
+    .lead-card {
+        background-color: #1E1E24; /* Dark Card BG */
+        border: 1px solid #333;
+        border-radius: 12px;
+        padding: 14px 16px;
+        margin-bottom: 12px;
+        box-shadow: 0 4px 6px rgba(0,0,0,0.2);
+        transition: background 0.2s;
+        position: relative;
+        overflow: hidden;
+    }
+    .lead-card:hover {
+        background-color: #25252b;
+        border-color: #555;
+    }
+    
+    /* Left Strip */
+    .status-strip {
+        position: absolute; left: 0; top: 0; bottom: 0; width: 5px;
+    }
+    .strip-red { background-color: #FF4B4B; }
+    .strip-orange { background-color: #FFA500; }
+    .strip-green { background-color: #28a745; }
+    .strip-grey { background-color: #555; }
+
+    /* Text Styles */
+    .card-header {
+        display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;
+    }
+    .card-name {
+        font-size: 16px; font-weight: 700; color: #FFFFFF; /* Pure White Name */
+        white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 65%;
+    }
+    .card-tag {
+        font-size: 10px; font-weight: 700; text-transform: uppercase;
+        padding: 2px 8px; border-radius: 10px;
+        background-color: #3d2212; color: #ff9f43; border: 1px solid #5e3718;
+    }
+    .card-body {
+        font-size: 14px; color: #BBB; /* Light Grey Status */
+        margin-bottom: 10px; display: flex; align-items: center; gap: 6px;
+    }
+    .card-footer {
+        display: flex; justify-content: space-between; align-items: center;
+        border-top: 1px solid #333; padding-top: 8px;
+        font-size: 12px; color: #777; /* Darker Grey Date */
+    }
+    .footer-highlight { color: #CCC; }
+</style>
+"""
+
 def generate_cards_html(dframe, context):
-    html = ""
+    html = CARD_STYLE # Start with the CSS
+    
     for i, row in dframe.iterrows():
         phone = str(row.get('Phone', '')).replace(',', '').replace('.', '')
         name = str(row.get('Client Name', 'Unknown'))
@@ -381,10 +357,10 @@ def generate_cards_html(dframe, context):
         next_date_html = ""
         
         if context == "Action":
-            strip_class = "strip-red" # Urgent
+            strip_class = "strip-red"
         elif context == "Future":
             strip_class = "strip-green"
-            next_date_html = f"<span>📅 {format_date_only(f_val)}</span>"
+            next_date_html = f"<span class='footer-highlight'>📅 {format_date_only(f_val)}</span>"
         
         icon = get_status_icon(raw_status)
         display_status = "Lost" if "Lost" in raw_status else raw_status.split(" /")[0]
@@ -422,7 +398,6 @@ def show_crm(users_df, search_q):
         ac = next((c for c in df.columns if "assign" in c.lower()), None)
         if ac: df = df[(df[ac] == st.session_state['username']) | (df[ac] == st.session_state['name']) | (df[ac] == "TC1")]
 
-    # SEARCH
     if search_q:
         res = df[df.astype(str).apply(lambda x: x.str.contains(search_q, case=False)).any(axis=1)]
         st.info(f"🔍 Found {len(res)}")
@@ -440,7 +415,6 @@ def show_crm(users_df, search_q):
     if st.session_state['role'] == "Manager":
         with c_toggle: is_bulk = st.toggle("⚡ Bulk")
     
-    # Bulk Actions (Checkbox Mode)
     if is_bulk:
         st.info("Select leads")
         b1, b2 = st.columns(2)
@@ -489,15 +463,12 @@ def show_crm(users_df, search_q):
         if dframe.empty: st.info("Empty")
         else:
             if ctx == "Future": dframe = dframe.sort_values(by='PD')
-            
             if is_bulk:
-                # Bulk Mode: Standard Buttons
                 for i, row in dframe.iterrows():
                     c1, c2 = st.columns([0.15, 0.85])
                     c1.checkbox("", key=f"sel_{key_prefix}_{row['Phone']}")
                     c2.button(f"{row['Client Name']}", key=f"btn_{key_prefix}_{row['Phone']}", use_container_width=True)
             else:
-                # View Mode: HTML Cards
                 html = generate_cards_html(dframe, ctx)
                 clicked = click_detector(html, key=f"click_{key_prefix}")
                 if clicked:
