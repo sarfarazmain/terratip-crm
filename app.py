@@ -20,171 +20,141 @@ except ImportError:
 # --- CONFIGURATION ---
 st.set_page_config(page_title="TerraTip CRM", layout="wide", page_icon="🏡", initial_sidebar_state="collapsed")
 
-# --- PROFESSIONAL DARK MODE CSS ---
+# --- 🎨 NUCLEAR CSS RESET (THE FIX) ---
 custom_css = """
     <style>
-        /* 1. GLOBAL RESET & DARK MODE */
+        /* 1. FORCE DARK THEME GLOBALLY */
+        :root {
+            --primary: #FF4B4B;
+            --bg-dark: #0E1117;
+            --card-dark: #1E1E24;
+            --text-white: #FFFFFF;
+            --text-grey: #A0A0A0;
+            --border-color: #333333;
+        }
+        
+        /* Override Streamlit Defaults */
         .stApp {
-            background-color: #0e1117 !important;
-            color: #ffffff !important;
+            background-color: var(--bg-dark) !important;
+            color: var(--text-white) !important;
             font-family: 'Source Sans Pro', sans-serif;
         }
         
-        /* Hide clutter */
-        header {visibility: hidden;}
-        [data-testid="stSidebarCollapsedControl"] {display: none;}
+        /* 2. CARD DESIGN SYSTEM (HTML) */
         
-        /* 2. CARD DESIGN SYSTEM (The Beautiful Part) */
-        
-        /* The container for the click detector */
-        .card-container {
-            font-family: 'Source Sans Pro', sans-serif;
+        /* Reset Link Styles (Fixes the "Blue Text" issue) */
+        a.card-link {
+            text-decoration: none !important;
+            color: inherit !important;
+            display: block;
         }
-
-        /* The Card Itself */
+        
         .lead-card {
-            background-color: #1E1E24; /* Lighter than bg, distinct card look */
-            border: 1px solid #333;
+            background-color: var(--card-dark);
+            border: 1px solid var(--border-color);
             border-radius: 12px;
-            padding: 16px;
+            padding: 14px 16px;
             margin-bottom: 12px;
             box-shadow: 0 4px 6px rgba(0,0,0,0.2);
             transition: transform 0.15s ease, border-color 0.15s;
             position: relative;
-            color: #E0E0E0; /* Default text color */
-            text-decoration: none; /* Remove blue link underline */
-            display: block;
+            overflow: hidden;
         }
         
         .lead-card:hover {
-            border-color: #555;
-            transform: translateY(-2px);
+            border-color: #666;
             background-color: #25252b;
+            transform: translateY(-1px);
         }
         
-        /* Status Strip (Left Border Accent) */
+        /* Left Color Strip */
         .status-strip {
-            position: absolute;
-            left: 0; top: 0; bottom: 0;
-            width: 5px;
-            border-top-left-radius: 12px;
-            border-bottom-left-radius: 12px;
+            position: absolute; left: 0; top: 0; bottom: 0; width: 4px;
         }
-        
-        /* Colors for Strip */
         .strip-red { background-color: #FF4B4B; }
         .strip-orange { background-color: #FFA500; }
         .strip-green { background-color: #00C851; }
         .strip-grey { background-color: #4B5563; }
 
-        /* HEADER: Name & Tag */
+        /* Typography */
         .card-header {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            margin-bottom: 6px;
+            display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;
         }
-        
         .card-name {
-            font-size: 17px;
-            font-weight: 700;
-            color: #FFFFFF; /* Pure White */
-            white-space: nowrap;
-            overflow: hidden;
-            text-overflow: ellipsis;
-            max-width: 65%;
+            font-size: 16px; font-weight: 700; color: #fff;
+            white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 60%;
         }
-        
         .card-tag {
-            font-size: 10px;
-            font-weight: 700;
-            text-transform: uppercase;
-            letter-spacing: 0.5px;
-            padding: 4px 10px;
-            border-radius: 12px;
-            background-color: #331405; /* Dark Brown BG */
-            color: #FF9F43; /* Orange Text */
-            border: 1px solid #5C2B0D;
+            font-size: 10px; font-weight: 700; text-transform: uppercase;
+            padding: 3px 8px; border-radius: 10px;
+            background-color: #3d2212; color: #ff9f43; border: 1px solid #5e3718;
             white-space: nowrap;
         }
-
-        /* BODY: Status */
+        
         .card-body {
-            display: flex;
-            align-items: center;
-            gap: 8px;
-            margin-bottom: 12px;
-            font-size: 14px;
-            color: #A0A0A0; /* Light Grey */
+            font-size: 14px; color: #ccc; margin-bottom: 10px;
+            display: flex; align-items: center; gap: 6px;
         }
-
-        /* FOOTER: Dates (Divider Line) */
+        
         .card-footer {
-            border-top: 1px solid #333;
-            padding-top: 10px;
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            font-size: 12px;
-            color: #666; /* Darker Grey for metadata */
-            font-weight: 500;
-        }
-        
-        .footer-highlight {
-            color: #ccc; /* Slightly brighter for important dates */
+            display: flex; justify-content: space-between; align-items: center;
+            border-top: 1px solid #333; padding-top: 8px;
+            font-size: 12px; color: #888; font-family: monospace;
         }
 
-        /* 3. MODAL & INPUT FIXES (Fixing the "Ugly" White Modal) */
+        /* 3. MODAL & INPUT FIXES (Fixes Legibility) */
         
-        /* Modal Background */
+        /* Force Modal Background to Dark */
         div[data-testid="stDialog"] {
             background-color: #1E1E24 !important;
             border: 1px solid #444;
-            color: white;
+            color: white !important;
         }
         
-        /* Input Fields (Fix black text on white) */
+        /* Fix Input Fields (White text on Dark BG) */
         .stTextInput input, .stSelectbox div[data-baseweb="select"], .stTextArea textarea {
-            background-color: #2d2d35 !important; /* Dark Grey Input */
+            background-color: #2d2d35 !important;
             color: white !important;
             border: 1px solid #444 !important;
-            border-radius: 8px !important;
         }
         
-        /* Dropdown Options */
+        /* Fix Dropdown Menu Items */
         ul[data-baseweb="menu"] {
             background-color: #2d2d35 !important;
-        }
-        
-        /* Labels inside Modal */
-        label p {
-            color: #A0A0A0 !important;
-            font-size: 13px;
-        }
-        
-        /* 4. UTILITY CLASSES */
-        a.card-link { text-decoration: none !important; color: inherit !important; }
-        
-        .big-btn { 
-            display: block; width: 100%; padding: 14px; 
-            text-align: center; border-radius: 10px; 
-            font-weight: 600; margin-bottom: 10px; 
-            text-decoration: none; font-size: 15px;
             color: white !important;
         }
-        .call-btn { background-color: #28a745; box-shadow: 0 4px 10px rgba(40, 167, 69, 0.3); }
-        .wa-btn { background-color: #25D366; box-shadow: 0 4px 10px rgba(37, 211, 102, 0.3); }
         
-        .note-history {
-            font-size: 13px; color: #ccc; background: #121212;
-            padding: 12px; border-radius: 8px; max-height: 150px;
-            overflow-y: auto; margin-bottom: 15px; border-left: 3px solid #555;
+        /* Fix Label Text Colors */
+        label, p, .stMarkdown {
+            color: #ddd !important;
+        }
+        
+        /* 4. UTILS */
+        /* Hide Header/Sidebar */
+        header {visibility: hidden;}
+        [data-testid="stSidebarCollapsedControl"] {display: none;}
+        
+        /* Buttons */
+        .big-btn { display: block; width: 100%; padding: 12px; text-align: center; border-radius: 8px; font-weight: bold; margin-bottom: 10px; text-decoration: none; font-size: 15px; color: white !important; }
+        .call-btn { background-color: #28a745; }
+        .wa-btn { background-color: #25D366; }
+        
+        /* Menu Button */
+        div[data-testid="stHorizontalBlock"] button { border-radius: 8px; font-weight: bold; border: 1px solid #444; }
+        
+        /* Tab Text */
+        .stTabs [data-baseweb="tab-list"] button {
+            color: #aaa !important;
+        }
+        .stTabs [data-baseweb="tab-list"] button[aria-selected="true"] {
+            color: white !important;
+            background-color: #333 !important;
         }
     </style>
 """
 st.markdown(custom_css, unsafe_allow_html=True)
 
-# --- TIMEZONE ---
+# --- TIMEZONE & STATE ---
 IST = pytz.timezone('Asia/Kolkata')
 def get_ist_time(): return datetime.now(IST).strftime("%Y-%m-%d %H:%M")
 def get_ist_date(): return datetime.now(IST).date()
@@ -193,7 +163,6 @@ if 'current_page' not in st.session_state: st.session_state['current_page'] = "C
 
 # --- HELPER: FORMAT DATES ---
 def format_datetime(val_str):
-    """Returns '29 Dec 14:30' or '-'"""
     if not val_str or len(str(val_str)) < 5: return "-"
     try:
         dt = datetime.strptime(str(val_str).strip(), "%Y-%m-%d %H:%M")
@@ -205,7 +174,6 @@ def format_datetime(val_str):
         except: return "-"
 
 def format_date_only(val_str):
-    """Returns '29 Dec' or 'Today'"""
     if not val_str or len(str(val_str)) < 5: return "-"
     try:
         d = datetime.strptime(str(val_str).strip(), "%Y-%m-%d").date()
@@ -302,7 +270,7 @@ def get_status_icon(status):
 # --- MENU ---
 @st.dialog("🍔 Navigation")
 def open_main_menu():
-    st.markdown(f"### 👤 {st.session_state['name']}")
+    st.markdown(f"**👤 {st.session_state['name']}**")
     st.caption(f"Role: {st.session_state['role']}")
     st.divider()
     c1, c2, c3 = st.columns(3)
@@ -338,7 +306,6 @@ def open_lead_modal(row_dict, users_df):
     c1, c2 = st.columns(2)
     with c1: st.markdown(big_call_btn(phone), unsafe_allow_html=True)
     with c2: st.markdown(big_wa_btn(phone, name), unsafe_allow_html=True)
-    
     st.caption(f"**{name}** | {phone}")
     
     def get_index(val, opts):
@@ -391,7 +358,7 @@ def open_lead_modal(row_dict, users_df):
                 leads_sheet.batch_update(updates); st.rerun()
         except Exception as e: st.error(str(e))
 
-# --- HTML CARD GENERATOR (DARK MODE FIX) ---
+# --- HTML CARD GENERATOR (PRO DARK MODE) ---
 def generate_cards_html(dframe, context):
     html = ""
     for i, row in dframe.iterrows():
@@ -407,20 +374,17 @@ def generate_cards_html(dframe, context):
         # Dates
         f_val = str(row.get(next((c for c in row.index if "Follow" in c), 'Follow'), '')).strip()
         t_val = str(row.get(next((c for c in row.index if "Last Call" in c), 'Last'), '')).strip()
-        
         last_inter_str = format_datetime(t_val)
         
-        # Logic for Strip Color & Date Display
-        strip_color = "strip-grey"
+        # Strip Logic
+        strip_class = "strip-grey"
         next_date_html = ""
         
         if context == "Action":
-            # Action: Red Strip, No "Next" text (implied)
-            strip_color = "strip-red"
+            strip_class = "strip-red" # Urgent
         elif context == "Future":
-            strip_color = "strip-green"
-            next_date_str = format_date_only(f_val)
-            next_date_html = f"<div class='footer-highlight'>🗓️ {next_date_str}</div>"
+            strip_class = "strip-green"
+            next_date_html = f"<span>📅 {format_date_only(f_val)}</span>"
         
         icon = get_status_icon(raw_status)
         display_status = "Lost" if "Lost" in raw_status else raw_status.split(" /")[0]
@@ -428,7 +392,7 @@ def generate_cards_html(dframe, context):
         card = f"""
         <a href='#' id='{phone}' class='card-link'>
             <div class='lead-card'>
-                <div class='status-strip {strip_color}'></div>
+                <div class='status-strip {strip_class}'></div>
                 <div class='card-header'>
                     <div class='card-name'>{name}</div>
                     {tag_html}
@@ -469,8 +433,6 @@ def show_crm(users_df, search_q):
         return
 
     today = get_ist_date()
-    
-    # Bulk Mode Toggle
     c_search, c_toggle = st.columns([0.65, 0.35])
     with c_search: pass
     
@@ -478,9 +440,9 @@ def show_crm(users_df, search_q):
     if st.session_state['role'] == "Manager":
         with c_toggle: is_bulk = st.toggle("⚡ Bulk")
     
-    # Bulk Actions (Fallback to Checkboxes for Bulk)
+    # Bulk Actions (Checkbox Mode)
     if is_bulk:
-        st.info("Select leads via checkboxes")
+        st.info("Select leads")
         b1, b2 = st.columns(2)
         with b1:
             label_text = st.text_input("Label", placeholder="VIP", label_visibility="collapsed")
@@ -529,13 +491,13 @@ def show_crm(users_df, search_q):
             if ctx == "Future": dframe = dframe.sort_values(by='PD')
             
             if is_bulk:
-                # Bulk Mode: Standard Buttons (We need native inputs for checkboxes)
+                # Bulk Mode: Standard Buttons
                 for i, row in dframe.iterrows():
                     c1, c2 = st.columns([0.15, 0.85])
                     c1.checkbox("", key=f"sel_{key_prefix}_{row['Phone']}")
                     c2.button(f"{row['Client Name']}", key=f"btn_{key_prefix}_{row['Phone']}", use_container_width=True)
             else:
-                # View Mode: HTML Cards (Dark Mode Fixed)
+                # View Mode: HTML Cards
                 html = generate_cards_html(dframe, ctx)
                 clicked = click_detector(html, key=f"click_{key_prefix}")
                 if clicked:
