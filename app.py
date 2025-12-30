@@ -10,132 +10,93 @@ import random
 import itertools
 import pytz
 
-# --- LIBRARY FOR CLICKABLE HTML CARDS ---
+# --- IMPORT CLICK DETECTOR ---
 try:
     from st_click_detector import click_detector
 except ImportError:
-    st.error("⚠️ Library missing. Please run: pip install st-click-detector")
+    st.error("⚠️ Please run: pip install st-click-detector")
     st.stop()
 
 # --- CONFIGURATION ---
 st.set_page_config(page_title="TerraTip CRM", layout="wide", page_icon="🏡", initial_sidebar_state="collapsed")
 
-# --- CUSTOM CSS (PROFESSIONAL MOBILE UI) ---
+# --- PROFESSIONAL CSS ---
 custom_css = """
     <style>
-        /* 1. APP THEME & RESET */
+        /* 1. APP RESET */
         .stApp { background-color: #0e1117 !important; color: white !important; }
         header {visibility: hidden;}
         [data-testid="stSidebarCollapsedControl"] {display: none;}
         
-        /* 2. HTML CARD STYLING (For st-click-detector) */
-        .card-link {
-            text-decoration: none !important;
-            color: inherit !important;
-            display: block;
-            margin-bottom: 10px;
-        }
-        
+        /* 2. CARD STYLING (HTML) */
         .lead-card {
             background-color: #1a1a1d;
             border: 1px solid #333;
-            border-radius: 12px;
-            padding: 16px;
-            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
-            transition: transform 0.1s, background 0.2s;
+            border-radius: 10px;
+            padding: 12px 16px;
+            margin-bottom: 12px;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.2);
+            transition: background 0.15s;
             position: relative;
             overflow: hidden;
+            cursor: pointer;
         }
         
-        .lead-card:active {
-            transform: scale(0.98);
-            background-color: #000;
-            border-color: #ff4b4b;
+        .lead-card:hover {
+            background-color: #222;
+            border-color: #555;
         }
         
-        /* Left Border Indicator Strip */
+        /* Status Strip (Left Border Color) */
         .status-strip {
-            position: absolute;
-            left: 0;
-            top: 0;
-            bottom: 0;
-            width: 5px;
-        }
-        .strip-red { background-color: #FF4B4B; }
-        .strip-orange { background-color: #FFA500; }
-        .strip-green { background-color: #28a745; }
-        .strip-grey { background-color: #555; }
-
-        /* Card Header: Name & Tag */
-        .card-header {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            margin-bottom: 8px;
+            position: absolute; left: 0; top: 0; bottom: 0; width: 4px;
         }
         
+        /* Typography Hierarchy */
+        .card-header {
+            display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;
+        }
         .card-name {
             font-family: 'Source Sans Pro', sans-serif;
-            font-size: 17px;
-            font-weight: 700;
-            color: #FFFFFF;
-            white-space: nowrap;
-            overflow: hidden;
-            text-overflow: ellipsis;
-            max-width: 65%;
+            font-size: 16px; font-weight: 700; color: #ffffff;
+            white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 65%;
         }
-        
         .card-tag {
-            font-size: 11px;
-            font-weight: 700;
-            text-transform: uppercase;
-            padding: 3px 8px;
-            border-radius: 10px;
-            background-color: #331405;
-            color: #FF8C42;
-            border: 1px solid #5C2B0D;
+            font-size: 10px; font-weight: 700; text-transform: uppercase;
+            padding: 2px 8px; border-radius: 10px;
+            background-color: #2d1b0e; color: #ff9f43; border: 1px solid #5e3718;
         }
-
-        /* Card Footer: Status & Time */
+        
+        .card-status-row {
+            font-size: 13px; color: #ccc; margin-bottom: 10px; display: flex; align-items: center; gap: 6px;
+        }
+        
         .card-footer {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            font-family: 'Source Sans Pro', sans-serif;
+            display: flex; justify-content: space-between; align-items: center;
+            border-top: 1px solid #333; padding-top: 8px; margin-top: 4px;
+        }
+        .footer-item {
+            font-size: 11px; color: #888; font-family: monospace; display: flex; align-items: center; gap: 4px;
         }
         
-        .card-status {
-            font-size: 14px;
-            color: #A0A0A0;
-            display: flex;
-            align-items: center;
-            gap: 6px;
-        }
-        
-        .card-time {
-            font-size: 12px;
-            font-weight: 600;
-            padding: 2px 6px;
-            border-radius: 4px;
-            background-color: #262730;
-        }
-        
-        .text-red { color: #FF4B4B; }
-        .text-orange { color: #FFA500; }
-        .text-green { color: #28a745; }
-        .text-grey { color: #777; }
+        /* Link Reset */
+        a.card-link { text-decoration: none; color: inherit; display: block; }
 
-        /* 3. UTILS & OVERRIDES */
+        /* 3. UTILS */
+        .stTextInput input, .stSelectbox div[data-baseweb="select"], .stTextArea textarea {
+            background-color: #1a1a1d !important; color: white !important; border: 1px solid #444 !important;
+        }
         div[data-testid="stDialog"] { border-radius: 16px; background-color: #262730; }
-        .stTextInput input { background-color: #1a1a1d !important; color: white !important; border: 1px solid #444 !important; }
         
-        /* Large Action Buttons */
+        /* Action Buttons */
         .big-btn { display: block; width: 100%; padding: 12px; text-align: center; border-radius: 8px; font-weight: bold; margin-bottom: 10px; text-decoration: none; font-size: 15px;}
         .call-btn { background-color: #28a745; color: white !important; }
         .wa-btn { background-color: #25D366; color: white !important; }
+        .note-history { font-size: 12px; color: #bbb; background: #121212; padding: 10px; border-radius: 6px; max-height: 120px; overflow-y: auto; margin-bottom: 12px; border-left: 2px solid #555; }
         
-        /* Menu Button */
-        div[data-testid="stHorizontalBlock"] button { border-radius: 8px; font-weight: bold; }
+        /* Menu & Tabs */
+        div[data-testid="stHorizontalBlock"] button { border-radius: 8px; border: 1px solid #444; }
+        .stTabs [data-baseweb="tab-list"] button { border-radius: 16px; padding: 4px 12px; font-size: 12px; }
         label, .stMarkdown p, .stToggle p { color: #eee !important; }
     </style>
 """
@@ -148,35 +109,27 @@ def get_ist_date(): return datetime.now(IST).date()
 
 if 'current_page' not in st.session_state: st.session_state['current_page'] = "CRM"
 
-# --- HELPER: TIME AGO ---
-def get_time_display(f_val, t_val, context):
-    """
-    Returns a tuple (display_text, color_class)
-    """
-    today = get_ist_date()
-    
-    # 1. Action/Future Logic (Uses Follow-up Date)
-    if context in ["Action", "Future"]:
-        if not f_val or len(str(f_val)) < 5: return ("New", "text-green")
-        try:
-            d = datetime.strptime(str(f_val).strip(), "%Y-%m-%d").date()
-            if d < today: return ("⚠️ Overdue", "text-red")
-            if d == today: return ("🔥 Today", "text-orange")
-            return (f"📅 {d.strftime('%d-%b')}", "text-grey")
-        except: return ("New", "text-green")
-    
-    # 2. History Logic (Uses Last Call Time)
+# --- HELPERS ---
+def format_datetime(val_str):
+    """Returns '29 Dec 14:30' or empty"""
+    if not val_str or len(str(val_str)) < 5: return "-"
     try:
-        last_dt = datetime.strptime(str(t_val).strip(), "%Y-%m-%d %H:%M")
-        if last_dt.tzinfo is None: last_dt = IST.localize(last_dt)
-        diff = datetime.now(IST) - last_dt
-        secs, days = diff.total_seconds(), diff.days
-        if days == 0:
-            if secs < 3600: return (f"{int(secs//60)}m ago", "text-grey")
-            return (f"{int(secs//3600)}h ago", "text-grey")
-        if days == 1: return ("Yesterday", "text-grey")
-        return (f"{days}d ago", "text-grey")
-    except: return ("-", "text-grey")
+        dt = datetime.strptime(str(val_str).strip(), "%Y-%m-%d %H:%M")
+        return dt.strftime("%d-%b %H:%M")
+    except:
+        try:
+            d = datetime.strptime(str(val_str).strip(), "%Y-%m-%d")
+            return d.strftime("%d-%b")
+        except: return "-"
+
+def format_date_only(val_str):
+    """Returns '29 Dec' or empty"""
+    if not val_str or len(str(val_str)) < 5: return "-"
+    try:
+        d = datetime.strptime(str(val_str).strip(), "%Y-%m-%d").date()
+        if d == get_ist_date(): return "Today"
+        return d.strftime("%d-%b")
+    except: return "-"
 
 # --- DATABASE ---
 @st.cache_resource
@@ -313,7 +266,7 @@ def open_lead_modal(row_dict, users_df):
         return 0
 
     new_status = st.selectbox("Status", PIPELINE_OPTS, index=get_index(status, PIPELINE_OPTS))
-    new_tag = st.text_input("🏷️ Label (e.g. VIP, Old Data)", value=curr_tag)
+    new_tag = st.text_input("🏷️ Tag", value=curr_tag)
     
     if len(str(notes)) > 2: st.markdown(f"<div class='note-history'>{notes}</div>", unsafe_allow_html=True)
     new_note = st.text_input("New Note")
@@ -355,54 +308,66 @@ def open_lead_modal(row_dict, users_df):
                 leads_sheet.batch_update(updates); st.rerun()
         except Exception as e: st.error(str(e))
 
-# --- HTML CARD GENERATOR (VIEW MODE) ---
-def generate_html_cards(dframe, context):
-    html_content = ""
+# --- HTML GENERATOR ---
+def generate_cards_html(dframe, context):
+    html = ""
     for i, row in dframe.iterrows():
         phone = str(row.get('Phone', '')).replace(',', '').replace('.', '')
         name = str(row.get('Client Name', 'Unknown'))
         raw_status = str(row.get('Status', ''))
         
-        # Tag Logic
+        # Tag
         tag_col = next((c for c in row.index if "Tag" in c or "Label" in c), None)
         tag_val = str(row.get(tag_col, '')).strip() if tag_col else ""
         tag_html = f"<div class='card-tag'>{tag_val}</div>" if tag_val and tag_val.lower() != "nan" else ""
         
-        # Time/Status Logic
+        # Dates
         f_val = str(row.get(next((c for c in row.index if "Follow" in c), 'Follow'), '')).strip()
         t_val = str(row.get(next((c for c in row.index if "Last Call" in c), 'Last'), '')).strip()
-        time_text, time_color = get_time_display(f_val, t_val, context)
         
+        last_inter_str = format_datetime(t_val)
+        
+        # Next Date Logic
+        next_date_str = ""
+        border_color = "#555" # Default Grey
+        
+        if context == "Action":
+            # Action: Next date is implied today/overdue
+            border_color = "#FF4B4B" # Red
+            # We hide "Next" in Action as per user request (it's redundant)
+            next_date_html = "" 
+        elif context == "Future":
+            border_color = "#28a745" # Green
+            next_date_str = format_date_only(f_val)
+            next_date_html = f"<div class='footer-item'>📅 {next_date_str}</div>"
+        else:
+            # Recycle/History
+            next_date_html = ""
+
+        # Icons & Status
         icon = get_status_icon(raw_status)
-        display_status = "Lost" if "Lost" in raw_status or "Price" in raw_status else raw_status.split(" ")[0] # Shorten
-        
-        strip_color = "strip-grey"
-        if "Overdue" in time_text: strip_color = "strip-red"
-        elif "Today" in time_text: strip_color = "strip-orange"
-        elif "New" in time_text: strip_color = "strip-green"
+        display_status = "Lost" if "Lost" in raw_status or "Price" in raw_status else raw_status.split(" /")[0]
 
         card = f"""
         <a href='#' id='{phone}' class='card-link'>
-            <div class='lead-card'>
-                <div class='status-strip {strip_color}'></div>
+            <div class='lead-card' style='border-left: 4px solid {border_color};'>
                 <div class='card-header'>
                     <div class='card-name'>{name}</div>
                     {tag_html}
                 </div>
+                <div class='card-status-row'>
+                    <span>{icon}</span>
+                    <span>{display_status}</span>
+                </div>
                 <div class='card-footer'>
-                    <div class='card-status'>
-                        <span>{icon}</span>
-                        <span>{display_status}</span>
-                    </div>
-                    <div class='card-time {time_color}'>
-                        {time_text}
-                    </div>
+                    {next_date_html}
+                    <div class='footer-item' style='margin-left: auto;'>🕒 {last_inter_str}</div>
                 </div>
             </div>
         </a>
         """
-        html_content += card
-    return html_content
+        html += card
+    return html
 
 # --- LIVE FEED ---
 @st.fragment(run_every=30)
@@ -415,14 +380,14 @@ def show_crm(users_df, search_q):
         ac = next((c for c in df.columns if "assign" in c.lower()), None)
         if ac: df = df[(df[ac] == st.session_state['username']) | (df[ac] == st.session_state['name']) | (df[ac] == "TC1")]
 
+    # SEARCH OVERRIDE
     if search_q:
         res = df[df.astype(str).apply(lambda x: x.str.contains(search_q, case=False)).any(axis=1)]
         st.info(f"🔍 Found {len(res)}")
-        # For search results, we force View Mode
-        clicked_id = click_detector(generate_html_cards(res, "Search"), key="search_click")
-        if clicked_id:
-            row = df[df['Phone'].astype(str).str.contains(clicked_id)].iloc[0]
-            open_lead_modal(row.to_dict(), users_df)
+        clicked = click_detector(generate_cards_html(res, "Search"), key="search_click")
+        if clicked:
+            r = df[df['Phone'].astype(str).str.replace(r'\D','',regex=True) == clicked].iloc[0]
+            open_lead_modal(r.to_dict(), users_df)
         return
 
     today = get_ist_date()
@@ -435,9 +400,9 @@ def show_crm(users_df, search_q):
     if st.session_state['role'] == "Manager":
         with c_toggle: is_bulk = st.toggle("⚡ Bulk")
     
-    # Bulk Actions
+    # Bulk Actions (Fallback to Checkboxes)
     if is_bulk:
-        st.info("Select leads via checkboxes below")
+        st.info("Select leads")
         b1, b2 = st.columns(2)
         with b1:
             label_text = st.text_input("Label", placeholder="VIP", label_visibility="collapsed")
@@ -480,32 +445,29 @@ def show_crm(users_df, search_q):
     
     t1, t2, t3, t4 = st.tabs([f"🔥 Action", f"📅 Future", f"♻️ Recycle", f"❌ Closed"])
     
-    def render_tab_content(dframe, prefix, ctx):
+    def render_content(dframe, context, key_prefix):
         if dframe.empty: st.info("Empty")
         else:
-            if ctx == "Future": dframe = dframe.sort_values(by='PD')
+            if context == "Future": dframe = dframe.sort_values(by='PD')
             
             if is_bulk:
-                # Fallback to Button+Checkbox for Bulk
+                # Bulk Mode: Standard Buttons
                 for i, row in dframe.iterrows():
-                    c_ch, c_info = st.columns([0.15, 0.85])
-                    c_ch.checkbox("", key=f"sel_{prefix}_{row['Phone']}")
-                    with c_info: st.button(f"{row['Client Name']}", key=f"btn_{prefix}_{row['Phone']}", use_container_width=True)
+                    c1, c2 = st.columns([0.15, 0.85])
+                    c1.checkbox("", key=f"sel_{key_prefix}_{row['Phone']}")
+                    c2.button(f"{row['Client Name']}", key=f"btn_{key_prefix}_{row['Phone']}", use_container_width=True)
             else:
-                # USE PRO HTML CARDS
-                html_str = generate_html_cards(dframe, ctx)
-                clicked = click_detector(html_str, key=f"click_{prefix}")
+                # View Mode: HTML Cards
+                html = generate_cards_html(dframe, context)
+                clicked = click_detector(html, key=f"click_{key_prefix}")
                 if clicked:
-                    # Find row by phone (which is the ID)
-                    # NOTE: clicked matches the 'id' in HTML
-                    target_row = dframe[dframe['Phone'].astype(str).str.replace(r'\D','', regex=True) == clicked]
-                    if not target_row.empty:
-                        open_lead_modal(target_row.iloc[0].to_dict(), users_df)
+                    r = df[df['Phone'].astype(str).str.replace(r'\D','',regex=True) == clicked]
+                    if not r.empty: open_lead_modal(r.iloc[0].to_dict(), users_df)
 
-    with t1: render_tab_content(df[action_cond & ~dead & ~recycle], "act", "Action")
-    with t2: render_tab_content(df[future_cond & ~dead & ~recycle], "fut", "Future")
-    with t3: render_tab_content(df[recycle & ~dead], "rec", "Recycle")
-    with t4: render_tab_content(df[dead], "hist", "History")
+    with t1: render_content(df[action_cond & ~dead & ~recycle], "Action", "act")
+    with t2: render_content(df[future_cond & ~dead & ~recycle], "Future", "fut")
+    with t3: render_content(df[recycle & ~dead], "Recycle", "rec")
+    with t4: render_content(df[dead], "History", "hist")
 
 # --- ADMIN PANEL ---
 def show_admin(users_df):
