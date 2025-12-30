@@ -13,84 +13,79 @@ import pytz
 # --- CONFIGURATION ---
 st.set_page_config(page_title="TerraTip CRM", layout="wide", page_icon="🏡", initial_sidebar_state="collapsed")
 
-# --- CUSTOM CSS (THE SIDEBAR BUTTON FIX) ---
+# --- CUSTOM CSS (THE "NAVBAR" FIX) ---
 custom_css = """
     <style>
-        /* 1. AGGRESSIVE DARK MODE */
+        /* 1. FORCE DARK MODE (System-Wide Override) */
+        :root {
+            --primary-color: #ff4b4b;
+            --background-color: #0e1117;
+            --secondary-background-color: #262730;
+            --text-color: #fafafa;
+            --font: "Source Sans Pro", sans-serif;
+        }
+        
+        /* Force main page background */
         .stApp {
             background-color: #0e1117 !important;
-            color: white !important;
+            color: #ffffff !important;
         }
         
-        /* 2. THE SIDEBAR BUTTON FIX (CRITICAL) */
-        /* We do NOT hide the header, we make it invisible but keep the button */
+        /* 2. THE TOP BAR (Safety Zone for Menu Button) */
+        /* We create a fake 'navbar' background at the top so the button has a home */
         header[data-testid="stHeader"] {
-            background: transparent !important;
-            pointer-events: none !important; /* Let clicks pass through empty space */
+            background-color: #1E1E24 !important; /* Solid Dark Grey */
+            height: 60px !important; /* Fixed height */
+            z-index: 99999 !important;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.5);
         }
         
-        /* The Toolbar (GitHub/Menu) - Hide this */
-        [data-testid="stToolbar"] {
-            display: none !important;
-        }
-        
-        /* The Decoration Bar - Hide this */
-        [data-testid="stDecoration"] {
-            display: none !important;
-        }
+        /* Hide the default decoration line and toolbar */
+        [data-testid="stDecoration"] { display: none !important; }
+        [data-testid="stToolbar"] { display: none !important; }
 
-        /* The Sidebar Button - Force Visible & Clickable */
+        /* 3. THE SIDEBAR BUTTON (High Visibility) */
         [data-testid="stSidebarCollapsedControl"] {
             display: flex !important;
             visibility: visible !important;
-            pointer-events: auto !important; /* Re-enable clicking */
-            
-            /* Styling to make it pop */
-            background-color: #262730 !important; 
             color: white !important;
-            border: 2px solid #555 !important;
-            border-radius: 12px !important;
-            width: 44px !important;
-            height: 44px !important;
-            justify-content: center;
-            align-items: center;
-            box-shadow: 0 4px 10px rgba(0,0,0,0.5) !important;
+            background-color: #333 !important; /* Distinct button color */
+            border: 1px solid #555 !important;
+            border-radius: 8px !important;
             
-            /* Positioning */
+            /* Sizing */
+            width: 40px !important;
+            height: 40px !important;
+            
+            /* Positioning inside the new Top Bar */
             position: fixed !important;
-            top: 12px !important;
-            left: 12px !important;
-            z-index: 1000001 !important;
+            top: 10px !important;
+            left: 10px !important;
+            z-index: 1000000 !important;
         }
         
-        /* Increase Icon Size */
+        /* Icon Size */
         [data-testid="stSidebarCollapsedControl"] svg {
-            width: 24px !important;
-            height: 24px !important;
+            width: 22px !important;
+            height: 22px !important;
             fill: white !important;
         }
 
-        /* 3. TEXT VISIBILITY FIXES */
-        /* Force Input Text & Placeholders to be visible */
+        /* 4. CONTENT SPACING */
+        /* Push content down below our new Top Bar */
+        .block-container { 
+            padding-top: 5rem !important; 
+        }
+
+        /* 5. INPUT FIELD VISIBILITY */
+        /* Ensure typed text is white on dark background */
         .stTextInput input {
             color: white !important;
-            background-color: #262730 !important;
-        }
-        .stTextInput input::placeholder {
-            color: #aaa !important; /* Light grey placeholder */
+            background-color: #1a1a1d !important;
+            border: 1px solid #444;
         }
         
-        /* Force Labels (like "Bulk Mode") to be white */
-        label, .stMarkdown p, .stToggle p {
-            color: #eee !important;
-        }
-
-        /* 4. LAYOUT SPACING */
-        .block-container { 
-            padding-top: 5rem !important; /* Push down content */
-        }
-
-        /* 5. CARD STYLING */
+        /* 6. CARD STYLING */
         .stButton button {
             width: 100%;
             text-align: left !important;
@@ -101,6 +96,7 @@ custom_css = """
             margin-bottom: 8px;
             box-shadow: 0 2px 4px rgba(0,0,0,0.2);
         }
+        
         .stButton button p {
             font-family: 'Source Sans Pro', sans-serif;
             color: #ffffff !important;
@@ -108,18 +104,22 @@ custom_css = """
             margin: 0;
             line-height: 1.5;
         }
+        
         .stButton button:active {
             background-color: #000 !important;
             border-color: #ff4b4b;
         }
 
-        /* 6. UTILS */
+        /* 7. UTILS & POPUPS */
         div[data-testid="stDialog"] { border-radius: 16px; background-color: #262730; }
         .big-btn { display: block; width: 100%; padding: 14px; text-align: center; border-radius: 10px; font-weight: bold; margin-bottom: 10px; text-decoration: none;}
         .call-btn { background-color: #28a745; color: white !important; }
         .wa-btn { background-color: #25D366; color: white !important; }
         .note-history { font-size: 13px; color: #ccc; background: #121212; padding: 12px; border-radius: 8px; max-height: 150px; overflow-y: auto; margin-bottom: 15px; border-left: 4px solid #555; }
         .stTabs [data-baseweb="tab-list"] button { border-radius: 20px; padding: 6px 12px; font-size: 13px; }
+        
+        /* Force label text to white */
+        label, .stMarkdown p, .stToggle p { color: #eee !important; }
     </style>
 """
 st.markdown(custom_css, unsafe_allow_html=True)
@@ -396,7 +396,6 @@ def show_live_leads_list(users_df, search_q, status_f):
     # --- BULK TOGGLE & SEARCH ROW ---
     c_search, c_toggle = st.columns([0.65, 0.35])
     with c_search:
-        # Placeholder for visual spacing
         pass
     
     is_bulk = False
@@ -550,7 +549,7 @@ def show_admin(users_df):
             dt = st.selectbox("Delete", opts)
             if st.button("❌ Delete"): users_sheet.delete_rows(users_sheet.find(dt).row); set_feedback(f"Deleted {dt}"); st.rerun()
 
-# --- SIDEBAR (HAMBURGER) ---
+# --- SIDEBAR ---
 with st.sidebar:
     st.markdown(f"### 👤 {st.session_state['name']}")
     st.caption(f"Role: {st.session_state['role']}")
@@ -586,7 +585,6 @@ with st.sidebar:
 
 # --- MAIN SCREEN ---
 if page == "🏠 CRM":
-    # Search is now clear of the header
     search_q = st.text_input("🔍 Search Leads", placeholder="Type Name or Phone...", label_visibility="collapsed")
     show_live_leads_list(users_df, search_q, None)
 
