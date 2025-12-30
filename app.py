@@ -14,90 +14,172 @@ import pytz
 try:
     from st_click_detector import click_detector
 except ImportError:
-    st.error("⚠️ Please run: pip install st-click-detector")
+    st.error("⚠️ Library missing. Please run: pip install st-click-detector")
     st.stop()
 
 # --- CONFIGURATION ---
 st.set_page_config(page_title="TerraTip CRM", layout="wide", page_icon="🏡", initial_sidebar_state="collapsed")
 
-# --- PROFESSIONAL CSS ---
+# --- PROFESSIONAL DARK MODE CSS ---
 custom_css = """
     <style>
-        /* 1. APP RESET */
-        .stApp { background-color: #0e1117 !important; color: white !important; }
+        /* 1. GLOBAL RESET & DARK MODE */
+        .stApp {
+            background-color: #0e1117 !important;
+            color: #ffffff !important;
+            font-family: 'Source Sans Pro', sans-serif;
+        }
+        
+        /* Hide clutter */
         header {visibility: hidden;}
         [data-testid="stSidebarCollapsedControl"] {display: none;}
         
-        /* 2. CARD STYLING (HTML) */
+        /* 2. CARD DESIGN SYSTEM (The Beautiful Part) */
+        
+        /* The container for the click detector */
+        .card-container {
+            font-family: 'Source Sans Pro', sans-serif;
+        }
+
+        /* The Card Itself */
         .lead-card {
-            background-color: #1a1a1d;
+            background-color: #1E1E24; /* Lighter than bg, distinct card look */
             border: 1px solid #333;
-            border-radius: 10px;
-            padding: 12px 16px;
+            border-radius: 12px;
+            padding: 16px;
             margin-bottom: 12px;
-            box-shadow: 0 2px 5px rgba(0,0,0,0.2);
-            transition: background 0.15s;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.2);
+            transition: transform 0.15s ease, border-color 0.15s;
             position: relative;
-            overflow: hidden;
-            cursor: pointer;
+            color: #E0E0E0; /* Default text color */
+            text-decoration: none; /* Remove blue link underline */
+            display: block;
         }
         
         .lead-card:hover {
-            background-color: #222;
             border-color: #555;
+            transform: translateY(-2px);
+            background-color: #25252b;
         }
         
-        /* Status Strip (Left Border Color) */
+        /* Status Strip (Left Border Accent) */
         .status-strip {
-            position: absolute; left: 0; top: 0; bottom: 0; width: 4px;
+            position: absolute;
+            left: 0; top: 0; bottom: 0;
+            width: 5px;
+            border-top-left-radius: 12px;
+            border-bottom-left-radius: 12px;
         }
         
-        /* Typography Hierarchy */
-        .card-header {
-            display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;
-        }
-        .card-name {
-            font-family: 'Source Sans Pro', sans-serif;
-            font-size: 16px; font-weight: 700; color: #ffffff;
-            white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 65%;
-        }
-        .card-tag {
-            font-size: 10px; font-weight: 700; text-transform: uppercase;
-            padding: 2px 8px; border-radius: 10px;
-            background-color: #2d1b0e; color: #ff9f43; border: 1px solid #5e3718;
-        }
-        
-        .card-status-row {
-            font-size: 13px; color: #ccc; margin-bottom: 10px; display: flex; align-items: center; gap: 6px;
-        }
-        
-        .card-footer {
-            display: flex; justify-content: space-between; align-items: center;
-            border-top: 1px solid #333; padding-top: 8px; margin-top: 4px;
-        }
-        .footer-item {
-            font-size: 11px; color: #888; font-family: monospace; display: flex; align-items: center; gap: 4px;
-        }
-        
-        /* Link Reset */
-        a.card-link { text-decoration: none; color: inherit; display: block; }
+        /* Colors for Strip */
+        .strip-red { background-color: #FF4B4B; }
+        .strip-orange { background-color: #FFA500; }
+        .strip-green { background-color: #00C851; }
+        .strip-grey { background-color: #4B5563; }
 
-        /* 3. UTILS */
-        .stTextInput input, .stSelectbox div[data-baseweb="select"], .stTextArea textarea {
-            background-color: #1a1a1d !important; color: white !important; border: 1px solid #444 !important;
+        /* HEADER: Name & Tag */
+        .card-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 6px;
         }
-        div[data-testid="stDialog"] { border-radius: 16px; background-color: #262730; }
         
-        /* Action Buttons */
-        .big-btn { display: block; width: 100%; padding: 12px; text-align: center; border-radius: 8px; font-weight: bold; margin-bottom: 10px; text-decoration: none; font-size: 15px;}
-        .call-btn { background-color: #28a745; color: white !important; }
-        .wa-btn { background-color: #25D366; color: white !important; }
-        .note-history { font-size: 12px; color: #bbb; background: #121212; padding: 10px; border-radius: 6px; max-height: 120px; overflow-y: auto; margin-bottom: 12px; border-left: 2px solid #555; }
+        .card-name {
+            font-size: 17px;
+            font-weight: 700;
+            color: #FFFFFF; /* Pure White */
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            max-width: 65%;
+        }
         
-        /* Menu & Tabs */
-        div[data-testid="stHorizontalBlock"] button { border-radius: 8px; border: 1px solid #444; }
-        .stTabs [data-baseweb="tab-list"] button { border-radius: 16px; padding: 4px 12px; font-size: 12px; }
-        label, .stMarkdown p, .stToggle p { color: #eee !important; }
+        .card-tag {
+            font-size: 10px;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            padding: 4px 10px;
+            border-radius: 12px;
+            background-color: #331405; /* Dark Brown BG */
+            color: #FF9F43; /* Orange Text */
+            border: 1px solid #5C2B0D;
+            white-space: nowrap;
+        }
+
+        /* BODY: Status */
+        .card-body {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            margin-bottom: 12px;
+            font-size: 14px;
+            color: #A0A0A0; /* Light Grey */
+        }
+
+        /* FOOTER: Dates (Divider Line) */
+        .card-footer {
+            border-top: 1px solid #333;
+            padding-top: 10px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            font-size: 12px;
+            color: #666; /* Darker Grey for metadata */
+            font-weight: 500;
+        }
+        
+        .footer-highlight {
+            color: #ccc; /* Slightly brighter for important dates */
+        }
+
+        /* 3. MODAL & INPUT FIXES (Fixing the "Ugly" White Modal) */
+        
+        /* Modal Background */
+        div[data-testid="stDialog"] {
+            background-color: #1E1E24 !important;
+            border: 1px solid #444;
+            color: white;
+        }
+        
+        /* Input Fields (Fix black text on white) */
+        .stTextInput input, .stSelectbox div[data-baseweb="select"], .stTextArea textarea {
+            background-color: #2d2d35 !important; /* Dark Grey Input */
+            color: white !important;
+            border: 1px solid #444 !important;
+            border-radius: 8px !important;
+        }
+        
+        /* Dropdown Options */
+        ul[data-baseweb="menu"] {
+            background-color: #2d2d35 !important;
+        }
+        
+        /* Labels inside Modal */
+        label p {
+            color: #A0A0A0 !important;
+            font-size: 13px;
+        }
+        
+        /* 4. UTILITY CLASSES */
+        a.card-link { text-decoration: none !important; color: inherit !important; }
+        
+        .big-btn { 
+            display: block; width: 100%; padding: 14px; 
+            text-align: center; border-radius: 10px; 
+            font-weight: 600; margin-bottom: 10px; 
+            text-decoration: none; font-size: 15px;
+            color: white !important;
+        }
+        .call-btn { background-color: #28a745; box-shadow: 0 4px 10px rgba(40, 167, 69, 0.3); }
+        .wa-btn { background-color: #25D366; box-shadow: 0 4px 10px rgba(37, 211, 102, 0.3); }
+        
+        .note-history {
+            font-size: 13px; color: #ccc; background: #121212;
+            padding: 12px; border-radius: 8px; max-height: 150px;
+            overflow-y: auto; margin-bottom: 15px; border-left: 3px solid #555;
+        }
     </style>
 """
 st.markdown(custom_css, unsafe_allow_html=True)
@@ -109,9 +191,9 @@ def get_ist_date(): return datetime.now(IST).date()
 
 if 'current_page' not in st.session_state: st.session_state['current_page'] = "CRM"
 
-# --- HELPERS ---
+# --- HELPER: FORMAT DATES ---
 def format_datetime(val_str):
-    """Returns '29 Dec 14:30' or empty"""
+    """Returns '29 Dec 14:30' or '-'"""
     if not val_str or len(str(val_str)) < 5: return "-"
     try:
         dt = datetime.strptime(str(val_str).strip(), "%Y-%m-%d %H:%M")
@@ -123,7 +205,7 @@ def format_datetime(val_str):
         except: return "-"
 
 def format_date_only(val_str):
-    """Returns '29 Dec' or empty"""
+    """Returns '29 Dec' or 'Today'"""
     if not val_str or len(str(val_str)) < 5: return "-"
     try:
         d = datetime.strptime(str(val_str).strip(), "%Y-%m-%d").date()
@@ -212,7 +294,7 @@ def get_status_icon(status):
     s = str(status).lower().strip()
     if "naya" in s: return "⚡"
     if "ring" in s: return "📞"
-    if "visit" in s: return "🗓"
+    if "visit" in s: return "🗓️"
     if "lost" in s or "price" in s: return "📉"
     if "interest" in s: return "🔥"
     return "⚪"
@@ -220,7 +302,7 @@ def get_status_icon(status):
 # --- MENU ---
 @st.dialog("🍔 Navigation")
 def open_main_menu():
-    st.markdown(f"**👤 {st.session_state['name']}**")
+    st.markdown(f"### 👤 {st.session_state['name']}")
     st.caption(f"Role: {st.session_state['role']}")
     st.divider()
     c1, c2, c3 = st.columns(3)
@@ -256,6 +338,7 @@ def open_lead_modal(row_dict, users_df):
     c1, c2 = st.columns(2)
     with c1: st.markdown(big_call_btn(phone), unsafe_allow_html=True)
     with c2: st.markdown(big_wa_btn(phone, name), unsafe_allow_html=True)
+    
     st.caption(f"**{name}** | {phone}")
     
     def get_index(val, opts):
@@ -266,7 +349,7 @@ def open_lead_modal(row_dict, users_df):
         return 0
 
     new_status = st.selectbox("Status", PIPELINE_OPTS, index=get_index(status, PIPELINE_OPTS))
-    new_tag = st.text_input("🏷️ Tag", value=curr_tag)
+    new_tag = st.text_input("🏷️ Label (e.g. VIP, Old Data)", value=curr_tag)
     
     if len(str(notes)) > 2: st.markdown(f"<div class='note-history'>{notes}</div>", unsafe_allow_html=True)
     new_note = st.text_input("New Note")
@@ -308,7 +391,7 @@ def open_lead_modal(row_dict, users_df):
                 leads_sheet.batch_update(updates); st.rerun()
         except Exception as e: st.error(str(e))
 
-# --- HTML GENERATOR ---
+# --- HTML CARD GENERATOR (DARK MODE FIX) ---
 def generate_cards_html(dframe, context):
     html = ""
     for i, row in dframe.iterrows():
@@ -327,41 +410,36 @@ def generate_cards_html(dframe, context):
         
         last_inter_str = format_datetime(t_val)
         
-        # Next Date Logic
-        next_date_str = ""
-        border_color = "#555" # Default Grey
+        # Logic for Strip Color & Date Display
+        strip_color = "strip-grey"
+        next_date_html = ""
         
         if context == "Action":
-            # Action: Next date is implied today/overdue
-            border_color = "#FF4B4B" # Red
-            # We hide "Next" in Action as per user request (it's redundant)
-            next_date_html = "" 
+            # Action: Red Strip, No "Next" text (implied)
+            strip_color = "strip-red"
         elif context == "Future":
-            border_color = "#28a745" # Green
+            strip_color = "strip-green"
             next_date_str = format_date_only(f_val)
-            next_date_html = f"<div class='footer-item'>📅 {next_date_str}</div>"
-        else:
-            # Recycle/History
-            next_date_html = ""
-
-        # Icons & Status
+            next_date_html = f"<div class='footer-highlight'>🗓️ {next_date_str}</div>"
+        
         icon = get_status_icon(raw_status)
-        display_status = "Lost" if "Lost" in raw_status or "Price" in raw_status else raw_status.split(" /")[0]
+        display_status = "Lost" if "Lost" in raw_status else raw_status.split(" /")[0]
 
         card = f"""
         <a href='#' id='{phone}' class='card-link'>
-            <div class='lead-card' style='border-left: 4px solid {border_color};'>
+            <div class='lead-card'>
+                <div class='status-strip {strip_color}'></div>
                 <div class='card-header'>
                     <div class='card-name'>{name}</div>
                     {tag_html}
                 </div>
-                <div class='card-status-row'>
+                <div class='card-body'>
                     <span>{icon}</span>
                     <span>{display_status}</span>
                 </div>
                 <div class='card-footer'>
                     {next_date_html}
-                    <div class='footer-item' style='margin-left: auto;'>🕒 {last_inter_str}</div>
+                    <div style='margin-left: auto;'>🕒 {last_inter_str}</div>
                 </div>
             </div>
         </a>
@@ -380,7 +458,7 @@ def show_crm(users_df, search_q):
         ac = next((c for c in df.columns if "assign" in c.lower()), None)
         if ac: df = df[(df[ac] == st.session_state['username']) | (df[ac] == st.session_state['name']) | (df[ac] == "TC1")]
 
-    # SEARCH OVERRIDE
+    # SEARCH
     if search_q:
         res = df[df.astype(str).apply(lambda x: x.str.contains(search_q, case=False)).any(axis=1)]
         st.info(f"🔍 Found {len(res)}")
@@ -400,9 +478,9 @@ def show_crm(users_df, search_q):
     if st.session_state['role'] == "Manager":
         with c_toggle: is_bulk = st.toggle("⚡ Bulk")
     
-    # Bulk Actions (Fallback to Checkboxes)
+    # Bulk Actions (Fallback to Checkboxes for Bulk)
     if is_bulk:
-        st.info("Select leads")
+        st.info("Select leads via checkboxes")
         b1, b2 = st.columns(2)
         with b1:
             label_text = st.text_input("Label", placeholder="VIP", label_visibility="collapsed")
@@ -445,29 +523,29 @@ def show_crm(users_df, search_q):
     
     t1, t2, t3, t4 = st.tabs([f"🔥 Action", f"📅 Future", f"♻️ Recycle", f"❌ Closed"])
     
-    def render_content(dframe, context, key_prefix):
+    def render_tab_content(dframe, ctx, key_prefix):
         if dframe.empty: st.info("Empty")
         else:
-            if context == "Future": dframe = dframe.sort_values(by='PD')
+            if ctx == "Future": dframe = dframe.sort_values(by='PD')
             
             if is_bulk:
-                # Bulk Mode: Standard Buttons
+                # Bulk Mode: Standard Buttons (We need native inputs for checkboxes)
                 for i, row in dframe.iterrows():
                     c1, c2 = st.columns([0.15, 0.85])
                     c1.checkbox("", key=f"sel_{key_prefix}_{row['Phone']}")
                     c2.button(f"{row['Client Name']}", key=f"btn_{key_prefix}_{row['Phone']}", use_container_width=True)
             else:
-                # View Mode: HTML Cards
-                html = generate_cards_html(dframe, context)
+                # View Mode: HTML Cards (Dark Mode Fixed)
+                html = generate_cards_html(dframe, ctx)
                 clicked = click_detector(html, key=f"click_{key_prefix}")
                 if clicked:
                     r = df[df['Phone'].astype(str).str.replace(r'\D','',regex=True) == clicked]
                     if not r.empty: open_lead_modal(r.iloc[0].to_dict(), users_df)
 
-    with t1: render_content(df[action_cond & ~dead & ~recycle], "Action", "act")
-    with t2: render_content(df[future_cond & ~dead & ~recycle], "Future", "fut")
-    with t3: render_content(df[recycle & ~dead], "Recycle", "rec")
-    with t4: render_content(df[dead], "History", "hist")
+    with t1: render_tab_content(df[action_cond & ~dead & ~recycle], "Action", "act")
+    with t2: render_tab_content(df[future_cond & ~dead & ~recycle], "Future", "fut")
+    with t3: render_tab_content(df[recycle & ~dead], "Recycle", "rec")
+    with t4: render_tab_content(df[dead], "History", "hist")
 
 # --- ADMIN PANEL ---
 def show_admin(users_df):
