@@ -13,70 +13,84 @@ import pytz
 # --- CONFIGURATION ---
 st.set_page_config(page_title="TerraTip CRM", layout="wide", page_icon="🏡", initial_sidebar_state="collapsed")
 
-# --- CUSTOM CSS (VISIBILITY FIX) ---
+# --- CUSTOM CSS (THE SIDEBAR BUTTON FIX) ---
 custom_css = """
     <style>
-        /* 1. AGGRESSIVE DARK MODE ENFORCEMENT */
-        /* Force the whole app to be dark, ignoring system settings */
+        /* 1. AGGRESSIVE DARK MODE */
         .stApp {
             background-color: #0e1117 !important;
-            color: #ffffff !important;
-        }
-        
-        /* Force inputs (Search/Text) to be dark with white text */
-        div[data-baseweb="input"] {
-            background-color: #262730 !important;
-            border-color: #444 !important;
-        }
-        input.st-ai {
             color: white !important;
         }
         
-        /* 2. SIDEBAR BUTTON (THE FIX) */
-        /* We make it a solid, visible floating button in the top left */
+        /* 2. THE SIDEBAR BUTTON FIX (CRITICAL) */
+        /* We do NOT hide the header, we make it invisible but keep the button */
+        header[data-testid="stHeader"] {
+            background: transparent !important;
+            pointer-events: none !important; /* Let clicks pass through empty space */
+        }
+        
+        /* The Toolbar (GitHub/Menu) - Hide this */
+        [data-testid="stToolbar"] {
+            display: none !important;
+        }
+        
+        /* The Decoration Bar - Hide this */
+        [data-testid="stDecoration"] {
+            display: none !important;
+        }
+
+        /* The Sidebar Button - Force Visible & Clickable */
         [data-testid="stSidebarCollapsedControl"] {
             display: flex !important;
             visibility: visible !important;
-            background-color: #262730 !important; /* Solid dark grey */
-            color: #ffffff !important; /* Bright white icon */
-            border: 2px solid #444 !important;
+            pointer-events: auto !important; /* Re-enable clicking */
+            
+            /* Styling to make it pop */
+            background-color: #262730 !important; 
+            color: white !important;
+            border: 2px solid #555 !important;
             border-radius: 12px !important;
-            width: 45px !important;
-            height: 45px !important;
+            width: 44px !important;
+            height: 44px !important;
             justify-content: center;
             align-items: center;
-            box-shadow: 0 4px 6px rgba(0,0,0,0.5) !important;
+            box-shadow: 0 4px 10px rgba(0,0,0,0.5) !important;
             
-            /* Pin it to the top-left, independent of the header */
+            /* Positioning */
             position: fixed !important;
-            top: 15px !important;
-            left: 15px !important;
+            top: 12px !important;
+            left: 12px !important;
             z-index: 1000001 !important;
         }
         
-        /* Increase icon size inside the button */
+        /* Increase Icon Size */
         [data-testid="stSidebarCollapsedControl"] svg {
             width: 24px !important;
             height: 24px !important;
             fill: white !important;
         }
 
-        /* 3. HEADER REMOVAL */
-        /* Remove the top bar entirely so it doesn't block anything */
-        header[data-testid="stHeader"] {
-            display: none !important;
+        /* 3. TEXT VISIBILITY FIXES */
+        /* Force Input Text & Placeholders to be visible */
+        .stTextInput input {
+            color: white !important;
+            background-color: #262730 !important;
         }
-        [data-testid="stToolbar"] {
-            display: none !important;
+        .stTextInput input::placeholder {
+            color: #aaa !important; /* Light grey placeholder */
+        }
+        
+        /* Force Labels (like "Bulk Mode") to be white */
+        label, .stMarkdown p, .stToggle p {
+            color: #eee !important;
         }
 
-        /* 4. LAYOUT ADJUSTMENT */
-        /* Push the main content down so the button doesn't overlap the search bar */
+        /* 4. LAYOUT SPACING */
         .block-container { 
-            padding-top: 5rem !important; 
+            padding-top: 5rem !important; /* Push down content */
         }
 
-        /* 5. CARD STYLING (Standardized) */
+        /* 5. CARD STYLING */
         .stButton button {
             width: 100%;
             text-align: left !important;
@@ -87,13 +101,16 @@ custom_css = """
             margin-bottom: 8px;
             box-shadow: 0 2px 4px rgba(0,0,0,0.2);
         }
-        
         .stButton button p {
             font-family: 'Source Sans Pro', sans-serif;
             color: #ffffff !important;
             font-size: 15px;
             margin: 0;
             line-height: 1.5;
+        }
+        .stButton button:active {
+            background-color: #000 !important;
+            border-color: #ff4b4b;
         }
 
         /* 6. UTILS */
@@ -367,6 +384,7 @@ def show_live_leads_list(users_df, search_q, status_f):
                     (df[assign_col_name] == st.session_state['name']) |
                     (df[assign_col_name] == "TC1")]
 
+    # SEARCH
     if search_q:
         df_search = df[df.astype(str).apply(lambda x: x.str.contains(search_q, case=False)).any(axis=1)]
         st.info(f"🔍 Found {len(df_search)} results")
@@ -376,9 +394,9 @@ def show_live_leads_list(users_df, search_q, status_f):
     today = get_ist_date()
     
     # --- BULK TOGGLE & SEARCH ROW ---
-    c_search, c_toggle = st.columns([0.6, 0.4])
+    c_search, c_toggle = st.columns([0.65, 0.35])
     with c_search:
-        # Placeholder for visual alignment
+        # Placeholder for visual spacing
         pass
     
     is_bulk = False
@@ -413,6 +431,7 @@ def show_live_leads_list(users_df, search_q, status_f):
     
     dead_mask = df['Status'].str.contains("Closed|Booked|Junk|Invalid|Agent", case=False, na=False)
     recycle_mask = df['Status'].str.contains("Lost|Price|Location|Not Interest", case=False, na=False)
+    
     date_action_mask = (df['ParsedDate'].notna()) & (df['ParsedDate'] <= today)
     future_mask = (df['ParsedDate'].notna()) & (df['ParsedDate'] > today)
     new_lead_mask = df['Status'].str.contains("Naya|New", case=False, na=False)
@@ -531,7 +550,7 @@ def show_admin(users_df):
             dt = st.selectbox("Delete", opts)
             if st.button("❌ Delete"): users_sheet.delete_rows(users_sheet.find(dt).row); set_feedback(f"Deleted {dt}"); st.rerun()
 
-# --- SIDEBAR ---
+# --- SIDEBAR (HAMBURGER) ---
 with st.sidebar:
     st.markdown(f"### 👤 {st.session_state['name']}")
     st.caption(f"Role: {st.session_state['role']}")
@@ -567,6 +586,7 @@ with st.sidebar:
 
 # --- MAIN SCREEN ---
 if page == "🏠 CRM":
+    # Search is now clear of the header
     search_q = st.text_input("🔍 Search Leads", placeholder="Type Name or Phone...", label_visibility="collapsed")
     show_live_leads_list(users_df, search_q, None)
 
