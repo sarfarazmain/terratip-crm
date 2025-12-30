@@ -2,3 +2,4 @@ streamlit
 pandas
 gspread
 google-auth
+st-click-detector
