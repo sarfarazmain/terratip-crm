@@ -13,51 +13,72 @@ import pytz
 # --- CONFIGURATION ---
 st.set_page_config(page_title="TerraTip CRM", layout="wide", page_icon="🏡", initial_sidebar_state="collapsed")
 
-# --- CUSTOM CSS (HEADER FIX & CARD ALIGNMENT) ---
+# --- CUSTOM CSS (THEME ENFORCER & MENU FIX) ---
 custom_css = """
     <style>
-        /* --- 1. HEADER "GHOSTING" (The Fix for the Search Bar) --- */
-        /* Make the top header transparent so it doesn't block the view */
-        header[data-testid="stHeader"] {
-            background-color: transparent !important;
-            border-bottom: none !important; 
-            z-index: 1 !important;
+        /* 1. FORCE DARK THEME (Fixes 'Day Mode' Issues) */
+        /* This forces the main app background to be dark grey/black */
+        .stApp {
+            background-color: #0e1117;
+            color: white;
         }
         
-        /* Hide the 'Fork', 'GitHub', and 'Three Dots' menu to clean up the top */
+        /* Fix Input Fields in 'Day Mode' to look dark */
+        .stTextInput input, .stSelectbox div[data-baseweb="select"], .stTextArea textarea {
+            background-color: #262730 !important;
+            color: white !important;
+            border: 1px solid #444 !important;
+        }
+        
+        /* 2. HEADER & MENU BUTTON LOGIC */
+        /* Hide the standard top header bar (Gradient line & GitHub stuff) */
+        header[data-testid="stHeader"] {
+            background: transparent !important;
+            backdrop-filter: none !important;
+            height: auto !important; 
+            padding-top: 10px !important;
+        }
+        
+        /* Hide the Right-Side Menu (GitHub/Settings) */
         [data-testid="stToolbar"] {
             visibility: hidden !important;
             display: none !important;
         }
         
-        /* Hide the colored decoration bar */
+        /* HIDE the decoration bar at the top */
         [data-testid="stDecoration"] {
             display: none !important;
         }
-        
-        /* Ensure the Sidebar Toggle (Hamburger/Arrow) is visible and accessible */
+
+        /* FORCE The Sidebar Toggle Button (>) to be visible and positioned */
         [data-testid="stSidebarCollapsedControl"] {
             display: block !important;
+            visibility: visible !important;
             color: white !important;
-            background-color: rgba(26, 26, 29, 0.8); /* Semi-transparent bg for visibility */
-            border-radius: 50%;
+            background-color: #1E1E24; /* Dark Card Color */
+            border: 1px solid #333;
+            border-radius: 8px;
             padding: 4px;
+            
+            /* Positioning: Floating Top Left */
+            position: fixed !important;
+            top: 15px !important;
+            left: 15px !important;
+            z-index: 100000 !important;
         }
 
-        /* Push the Search Bar DOWN so it isn't hidden behind the toggle */
+        /* Push content down so Search Bar isn't hidden behind the button */
         .block-container { 
             padding-top: 4rem !important; 
-            padding-left: 1rem !important;
-            padding-right: 1rem !important;
         }
 
-        /* --- 2. CARD BUTTON STYLING (Strict Left Alignment) --- */
+        /* 3. CARD STYLING */
         .stButton button {
             width: 100%;
             text-align: left !important;
             padding: 16px 20px !important;
             border-radius: 12px !important;
-            background-color: #1a1a1d; /* Deep premium black */
+            background-color: #1a1a1d; 
             border: 1px solid #333;
             transition: transform 0.1s;
             height: auto !important;
@@ -73,20 +94,25 @@ custom_css = """
             transform: scale(0.98);
         }
         
-        /* Force Text inside button to align left */
         .stButton button p {
             font-family: 'Source Sans Pro', sans-serif;
             text-align: left !important;
             display: block !important;
             width: 100%;
             line-height: 1.5;
+            color: #eee; /* Ensure text is white */
         }
 
-        /* --- 3. POPUP & UI POLISH --- */
-        div[data-testid="stDialog"] {
-            border-radius: 16px;
+        /* 4. TABS & POPUPS */
+        div[data-testid="stDialog"] { border-radius: 16px; background-color: #262730; }
+        .stTabs [data-baseweb="tab-list"] button { border-radius: 20px; padding: 6px 16px; font-size: 13px; }
+        
+        .note-history {
+            font-size: 13px; color: #aaa; background: #121212;
+            padding: 12px; border-radius: 8px; max-height: 150px;
+            overflow-y: auto; margin-bottom: 15px; border-left: 4px solid #555;
         }
-
+        
         .big-btn {
             display: block; width: 100%; padding: 14px; text-align: center;
             border-radius: 10px; text-decoration: none; font-weight: 600;
@@ -95,19 +121,6 @@ custom_css = """
         }
         .call-btn { background-color: #28a745; color: white !important; }
         .wa-btn { background-color: #25D366; color: white !important; }
-        
-        .note-history {
-            font-size: 13px; color: #aaa; background: #121212;
-            padding: 12px; border-radius: 8px; max-height: 150px;
-            overflow-y: auto; margin-bottom: 15px; border-left: 4px solid #555;
-            line-height: 1.5;
-        }
-        
-        /* Tabs Styling */
-        .stTabs [data-baseweb="tab-list"] { gap: 8px; }
-        .stTabs [data-baseweb="tab-list"] button {
-            border-radius: 20px; padding: 6px 16px; font-size: 13px; font-weight: 600;
-        }
     </style>
 """
 st.markdown(custom_css, unsafe_allow_html=True)
@@ -330,7 +343,6 @@ def render_leads(df, users_df, label_prefix="", is_bulk=False):
         name = str(row.get('Client Name', 'Unknown'))
         raw_status = str(row.get('Status', ''))
         
-        # Display Status Logic (Shorten)
         display_status = raw_status
         if "Lost" in raw_status or "Price" in raw_status: display_status = "Lost (Price/Loc)"
         elif "Ringing" in raw_status: display_status = "Ringing"
@@ -352,14 +364,11 @@ def render_leads(df, users_df, label_prefix="", is_bulk=False):
         icon = get_status_icon(raw_status)
         short_name = name[:20] + ".." if len(name) > 20 else name
         
-        # --- UI LAYOUT: STRICT ALIGNMENT ---
-        # Using a clear separator '•' helps visual alignment on mobile
         if display_date:
             label = f"**{short_name}**\n{icon} {display_status}  •  📅 {display_date}"
         else:
             label = f"**{short_name}**\n{icon} {display_status}"
         
-        # BULK MODE
         if is_bulk:
             c_check, c_btn = st.columns([0.15, 0.85])
             with c_check: 
@@ -386,7 +395,6 @@ def show_live_leads_list(users_df, search_q, status_f):
                     (df[assign_col_name] == st.session_state['name']) |
                     (df[assign_col_name] == "TC1")]
 
-    # SEARCH OVERRIDE
     if search_q:
         df_search = df[df.astype(str).apply(lambda x: x.str.contains(search_q, case=False)).any(axis=1)]
         st.info(f"🔍 Found {len(df_search)} results")
@@ -395,7 +403,6 @@ def show_live_leads_list(users_df, search_q, status_f):
 
     today = get_ist_date()
     
-    # BULK MODE CHECK
     is_bulk = st.session_state.get('bulk_mode', False)
     if is_bulk:
         st.warning("⚡ BULK MODE: Select leads to delete")
@@ -422,7 +429,6 @@ def show_live_leads_list(users_df, search_q, status_f):
     f_col_name = next((c for c in df.columns if "Follow" in c), None)
     df['ParsedDate'] = df[f_col_name].apply(parse_f_date) if f_col_name else None
     
-    # LOGIC MASKS
     dead_mask = df['Status'].str.contains("Closed|Booked|Junk|Invalid|Agent", case=False, na=False)
     recycle_mask = df['Status'].str.contains("Lost|Price|Location|Not Interest", case=False, na=False)
     
@@ -430,8 +436,8 @@ def show_live_leads_list(users_df, search_q, status_f):
     future_mask = (df['ParsedDate'].notna()) & (df['ParsedDate'] > today)
     new_lead_mask = df['Status'].str.contains("Naya|New", case=False, na=False)
     
-    # BUCKET 1: ACTION
     action_df = df[ (date_action_mask | new_lead_mask) & (~dead_mask) & (~recycle_mask) ].copy()
+    
     def get_sort_priority(row):
         if pd.notna(row['ParsedDate']):
             if row['ParsedDate'] < today: return 0 
@@ -441,16 +447,11 @@ def show_live_leads_list(users_df, search_q, status_f):
         action_df['Priority'] = action_df.apply(get_sort_priority, axis=1)
         action_df = action_df.sort_values(by=['Priority'])
 
-    # BUCKET 2: FUTURE
     future_df = df[ future_mask & (~dead_mask) & (~recycle_mask) ].copy()
     if not future_df.empty: future_df = future_df.sort_values(by='ParsedDate')
 
-    # BUCKET 3: RECYCLE
     recycle_df = df[ recycle_mask & (~dead_mask) ].copy()
-
-    # BUCKET 4: HISTORY
-    history_mask = dead_mask | ( (~date_action_mask) & (~new_lead_mask) & (~future_mask) & (~recycle_mask) )
-    history_df = df[history_mask].copy()
+    history_df = df[dead_mask | ( (~date_action_mask) & (~new_lead_mask) & (~future_mask) & (~recycle_mask) )].copy()
 
     tab1, tab2, tab3, tab4 = st.tabs([
         f"🔥 Action ({len(action_df)})", 
@@ -593,8 +594,7 @@ with st.sidebar:
 
 # --- MAIN SCREEN ---
 if page == "🏠 CRM":
-    # 🔍 Search Bar (Visual Placement Fix)
-    # The padding-top in CSS ensures this sits below the ghosted header
+    # Search is now clear of the header
     search_q = st.text_input("🔍 Search Leads", placeholder="Type Name or Phone...", label_visibility="collapsed")
     show_live_leads_list(users_df, search_q, None)
 
