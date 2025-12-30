@@ -20,46 +20,30 @@ except ImportError:
 # --- CONFIGURATION ---
 st.set_page_config(page_title="TerraTip CRM", layout="wide", page_icon="🏡", initial_sidebar_state="collapsed")
 
-# --- 1. MAIN APP STYLING (Background, Inputs, Modals) ---
-# This styles everything EXCEPT the cards
+# --- 1. GLOBAL APP CSS ---
 custom_css = """
     <style>
-        /* Force Dark Mode Globally */
-        .stApp {
-            background-color: #0e1117 !important;
-            color: #ffffff !important;
-        }
-        
-        /* Hide Default Header */
+        /* Force Dark Mode */
+        .stApp { background-color: #0e1117 !important; color: #ffffff !important; }
         header {visibility: hidden;}
         [data-testid="stSidebarCollapsedControl"] {display: none;}
         
-        /* Fix Input Fields (White text on Dark BG) */
+        /* Inputs */
         .stTextInput input, .stSelectbox div[data-baseweb="select"], .stTextArea textarea {
-            background-color: #1E1E24 !important;
-            color: white !important;
-            border: 1px solid #444 !important;
+            background-color: #1E1E24 !important; color: white !important; border: 1px solid #444 !important;
         }
         
-        /* Fix Modal Background */
-        div[data-testid="stDialog"] {
-            background-color: #1E1E24 !important;
-            color: white !important;
-        }
+        /* Modal */
+        div[data-testid="stDialog"] { background-color: #1E1E24 !important; color: white !important; border: 1px solid #333; }
         
-        /* Fix Labels */
-        label, p, .stMarkdown { color: #eee !important; }
-        
-        /* Action Buttons */
+        /* Buttons */
         .big-btn { display: block; width: 100%; padding: 12px; text-align: center; border-radius: 8px; font-weight: bold; margin-bottom: 10px; text-decoration: none; font-size: 15px; color: white !important; }
         .call-btn { background-color: #28a745; }
         .wa-btn { background-color: #25D366; }
         
-        /* Tabs */
-        .stTabs [data-baseweb="tab-list"] button { border-radius: 16px; padding: 4px 12px; font-size: 12px; }
-        
-        /* Menu Button */
+        /* Menu */
         div[data-testid="stHorizontalBlock"] button { border-radius: 8px; font-weight: bold; border: 1px solid #444; }
+        label, p, .stMarkdown { color: #eee !important; }
     </style>
 """
 st.markdown(custom_css, unsafe_allow_html=True)
@@ -71,17 +55,13 @@ def get_ist_date(): return datetime.now(IST).date()
 
 if 'current_page' not in st.session_state: st.session_state['current_page'] = "CRM"
 
-# --- HELPER: FORMAT DATES ---
+# --- HELPER: DATE FORMATTING ---
 def format_datetime(val_str):
     if not val_str or len(str(val_str)) < 5: return "-"
     try:
         dt = datetime.strptime(str(val_str).strip(), "%Y-%m-%d %H:%M")
         return dt.strftime("%d-%b %H:%M")
-    except:
-        try:
-            d = datetime.strptime(str(val_str).strip(), "%Y-%m-%d")
-            return d.strftime("%d-%b")
-        except: return "-"
+    except: return "-"
 
 def format_date_only(val_str):
     if not val_str or len(str(val_str)) < 5: return "-"
@@ -268,38 +248,26 @@ def open_lead_modal(row_dict, users_df):
                 leads_sheet.batch_update(updates); st.rerun()
         except Exception as e: st.error(str(e))
 
-# --- 2. CARD CSS INJECTOR (THE FIX) ---
-# This style block travels WITH the cards into the iframe
+# --- 2. CARD CSS INJECTOR (THE DARK MODE FIX) ---
 CARD_STYLE = """
 <style>
-    body {
-        margin: 0;
-        padding: 0;
-        font-family: sans-serif;
-        background-color: transparent; /* Allows main app bg to show */
-    }
-    a.card-link {
-        text-decoration: none;
-        color: inherit;
-        display: block;
-    }
+    body { margin: 0; padding: 0; font-family: sans-serif; background-color: transparent; }
+    
+    a.card-link { text-decoration: none; color: inherit; display: block; }
+    
     .lead-card {
-        background-color: #1E1E24; /* Dark Card BG */
+        background-color: #1E1E24; /* FORCE DARK BG */
         border: 1px solid #333;
         border-radius: 12px;
         padding: 14px 16px;
         margin-bottom: 12px;
-        box-shadow: 0 4px 6px rgba(0,0,0,0.2);
-        transition: background 0.2s;
+        box-shadow: 0 4px 6px rgba(0,0,0,0.3);
         position: relative;
         overflow: hidden;
     }
-    .lead-card:hover {
-        background-color: #25252b;
-        border-color: #555;
-    }
     
-    /* Left Strip */
+    .lead-card:hover { background-color: #25252b; border-color: #666; }
+    
     .status-strip {
         position: absolute; left: 0; top: 0; bottom: 0; width: 5px;
     }
@@ -308,34 +276,51 @@ CARD_STYLE = """
     .strip-green { background-color: #28a745; }
     .strip-grey { background-color: #555; }
 
-    /* Text Styles */
+    /* HEADER */
     .card-header {
-        display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;
+        display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;
     }
     .card-name {
-        font-size: 16px; font-weight: 700; color: #FFFFFF; /* Pure White Name */
-        white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 65%;
+        font-size: 16px; font-weight: 700; color: #FFFFFF; /* Pure White */
+        white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 60%;
     }
+    
+    /* PILL TAG (Right Side) */
     .card-tag {
         font-size: 10px; font-weight: 700; text-transform: uppercase;
-        padding: 2px 8px; border-radius: 10px;
-        background-color: #3d2212; color: #ff9f43; border: 1px solid #5e3718;
+        padding: 4px 8px; border-radius: 12px;
+        background-color: #3d2212; color: #FF9F43; border: 1px solid #5e3718;
+        white-space: nowrap;
     }
+
+    /* BODY */
     .card-body {
-        font-size: 14px; color: #BBB; /* Light Grey Status */
+        font-size: 14px; color: #BBB; /* Light Grey */
         margin-bottom: 10px; display: flex; align-items: center; gap: 6px;
     }
+
+    /* FOOTER (Split) */
     .card-footer {
         display: flex; justify-content: space-between; align-items: center;
         border-top: 1px solid #333; padding-top: 8px;
-        font-size: 12px; color: #777; /* Darker Grey Date */
+        font-size: 12px; color: #777; /* Dark Grey */
+        font-family: monospace;
     }
-    .footer-highlight { color: #CCC; }
+    
+    .footer-left {
+        font-weight: 600;
+        display: flex; align-items: center; gap: 4px;
+    }
+    .text-red { color: #FF4B4B; }
+    .text-orange { color: #FFA500; }
+    .text-green { color: #28a745; }
+    .text-blue { color: #4287f5; }
 </style>
 """
 
 def generate_cards_html(dframe, context):
-    html = CARD_STYLE # Start with the CSS
+    html = CARD_STYLE 
+    today = get_ist_date()
     
     for i, row in dframe.iterrows():
         phone = str(row.get('Phone', '')).replace(',', '').replace('.', '')
@@ -347,21 +332,39 @@ def generate_cards_html(dframe, context):
         tag_val = str(row.get(tag_col, '')).strip() if tag_col else ""
         tag_html = f"<div class='card-tag'>{tag_val}</div>" if tag_val and tag_val.lower() != "nan" else ""
         
-        # Dates
+        # Date Logic
         f_val = str(row.get(next((c for c in row.index if "Follow" in c), 'Follow'), '')).strip()
         t_val = str(row.get(next((c for c in row.index if "Last Call" in c), 'Last'), '')).strip()
-        last_inter_str = format_datetime(t_val)
+        last_update = format_datetime(t_val)
         
-        # Strip Logic
+        # Default styling
         strip_class = "strip-grey"
         next_date_html = ""
         
+        # Context-Specific Logic
         if context == "Action":
+            # Action Tab: Show Urgency
             strip_class = "strip-red"
+            try:
+                d = datetime.strptime(str(f_val).strip(), "%Y-%m-%d").date()
+                if d < today: next_date_html = "<span class='footer-left text-red'>⚠️ Overdue</span>"
+                elif d == today: next_date_html = "<span class='footer-left text-orange'>🔥 Today</span>"
+                else: next_date_html = "<span class='footer-left text-green'>⚡ New</span>"
+            except: next_date_html = "<span class='footer-left text-green'>⚡ New</span>"
+            
         elif context == "Future":
+            # Future Tab: Show Date
             strip_class = "strip-green"
-            next_date_html = f"<span class='footer-highlight'>📅 {format_date_only(f_val)}</span>"
-        
+            next_date_html = f"<span class='footer-left text-blue'>📅 {format_date_only(f_val)}</span>"
+            
+        elif context == "Recycle":
+            strip_class = "strip-orange"
+            next_date_html = "<span class='footer-left'>♻️ Recycle</span>"
+            
+        else: # History
+            strip_class = "strip-grey"
+            next_date_html = "<span class='footer-left'>🔒 Closed</span>"
+
         icon = get_status_icon(raw_status)
         display_status = "Lost" if "Lost" in raw_status else raw_status.split(" /")[0]
 
@@ -379,7 +382,7 @@ def generate_cards_html(dframe, context):
                 </div>
                 <div class='card-footer'>
                     {next_date_html}
-                    <div style='margin-left: auto;'>🕒 {last_inter_str}</div>
+                    <div>🕒 {last_update}</div>
                 </div>
             </div>
         </a>
@@ -408,41 +411,57 @@ def show_crm(users_df, search_q):
         return
 
     today = get_ist_date()
+    
+    # Bulk Mode
     c_search, c_toggle = st.columns([0.65, 0.35])
     with c_search: pass
-    
     is_bulk = False
     if st.session_state['role'] == "Manager":
         with c_toggle: is_bulk = st.toggle("⚡ Bulk")
     
+    # --- BULK ACTIONS (RESTORED) ---
     if is_bulk:
         st.info("Select leads")
-        b1, b2 = st.columns(2)
-        with b1:
-            label_text = st.text_input("Label", placeholder="VIP", label_visibility="collapsed")
-            if st.button("Apply"):
+        c1, c2, c3 = st.columns([1.5, 1.5, 1])
+        with c1:
+            assign_target = st.selectbox("Assign", users_df['Username'].tolist(), label_visibility="collapsed", placeholder="User")
+            if st.button("Assign"):
+                phones = [k.split("_")[-1] for k, v in st.session_state.items() if k.startswith("sel_") and v]
+                if phones:
+                    try:
+                        h = leads_sheet.row_values(1)
+                        col_idx = next((i+1 for i,v in enumerate(h) if "Assign" in v), None)
+                        if col_idx:
+                            all_v = leads_sheet.get_all_values(); updates = []
+                            for i, r in enumerate(all_v):
+                                if len(r)>3 and str(r[3]).replace(',','').replace('.','') in phones:
+                                    updates.append({'range': gspread.utils.rowcol_to_a1(i+1, col_idx), 'values': [[assign_target]]})
+                            if updates: leads_sheet.batch_update(updates); st.success("Done!"); time.sleep(1); st.rerun()
+                    except: st.error("Error")
+        with c2:
+            label_text = st.text_input("Label", placeholder="Tag", label_visibility="collapsed")
+            if st.button("Tag"):
                 phones = [k.split("_")[-1] for k, v in st.session_state.items() if k.startswith("sel_") and v]
                 if phones and label_text:
                     try:
                         h = leads_sheet.row_values(1)
                         col_idx = next((i+1 for i,v in enumerate(h) if "Tag" in v or "Label" in v), None)
-                        if not col_idx: st.error("No Tag col")
-                        else:
+                        if col_idx:
                             all_v = leads_sheet.get_all_values(); updates = []
                             for i, r in enumerate(all_v):
                                 if len(r)>3 and str(r[3]).replace(',','').replace('.','') in phones:
                                     updates.append({'range': gspread.utils.rowcol_to_a1(i+1, col_idx), 'values': [[label_text]]})
                             if updates: leads_sheet.batch_update(updates); st.success("Done!"); time.sleep(1); st.rerun()
                     except: st.error("Error")
-        with b2:
-            if st.button("🗑️ Delete"):
+        with c3:
+            if st.button("🗑️"):
                 phones = [k.split("_")[-1] for k, v in st.session_state.items() if k.startswith("sel_") and v]
                 if phones:
                     try:
                         all_v = leads_sheet.get_all_values()
                         to_del = [i+1 for i,r in enumerate(all_v) if len(r)>3 and str(r[3]).replace(',','').replace('.','') in phones]
                         for r in sorted(to_del, reverse=True): leads_sheet.delete_rows(r)
-                        st.success("Deleted!"); time.sleep(1); st.rerun()
+                        st.success("Del"); time.sleep(1); st.rerun()
                     except: st.error("Error")
 
     def parse_date(v):
@@ -463,12 +482,15 @@ def show_crm(users_df, search_q):
         if dframe.empty: st.info("Empty")
         else:
             if ctx == "Future": dframe = dframe.sort_values(by='PD')
+            
             if is_bulk:
+                # Bulk Mode: Standard Buttons
                 for i, row in dframe.iterrows():
                     c1, c2 = st.columns([0.15, 0.85])
                     c1.checkbox("", key=f"sel_{key_prefix}_{row['Phone']}")
                     c2.button(f"{row['Client Name']}", key=f"btn_{key_prefix}_{row['Phone']}", use_container_width=True)
             else:
+                # View Mode: HTML Cards (CSS Injected)
                 html = generate_cards_html(dframe, ctx)
                 clicked = click_detector(html, key=f"click_{key_prefix}")
                 if clicked:
