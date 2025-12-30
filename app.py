@@ -13,63 +13,31 @@ import pytz
 # --- CONFIGURATION ---
 st.set_page_config(page_title="TerraTip CRM", layout="wide", page_icon="🏡", initial_sidebar_state="collapsed")
 
-# --- CUSTOM CSS (THE FINAL VISIBILITY FIX) ---
+# --- CUSTOM CSS (MOBILE APP STYLE) ---
 custom_css = """
     <style>
-        /* 1. AGGRESSIVE DARK MODE */
+        /* 1. FORCE DARK MODE */
         .stApp {
             background-color: #0e1117 !important;
             color: white !important;
         }
         
-        /* 2. THE SIDEBAR TOGGLE BUTTON (>) FIX */
-        /* We force the native button to stay visible, opaque, and on top */
-        [data-testid="stSidebarCollapsedControl"] {
-            display: flex !important;
-            visibility: visible !important;
+        /* 2. HIDE DEFAULT HEADER & SIDEBAR */
+        header {visibility: hidden;}
+        [data-testid="stSidebarCollapsedControl"] {display: none;}
+        
+        /* 3. INPUT FIELDS */
+        .stTextInput input, .stSelectbox div[data-baseweb="select"], .stTextArea textarea {
+            background-color: #1a1a1d !important;
             color: white !important;
-            background-color: #262730 !important; /* Dark Grey Bubble */
-            border: 2px solid #444 !important;
-            border-radius: 50% !important;
-            width: 45px !important;
-            height: 45px !important;
-            justify-content: center;
-            align-items: center;
-            
-            /* Pin to Top Left */
-            position: fixed !important;
-            top: 15px !important;
-            left: 15px !important;
-            z-index: 1000002 !important;
-            box-shadow: 0 4px 6px rgba(0,0,0,0.3) !important;
+            border: 1px solid #444 !important;
         }
         
-        /* Force the Arrow Icon to be White */
-        [data-testid="stSidebarCollapsedControl"] svg {
-            fill: white !important;
-            color: white !important;
-            width: 24px !important;
-            height: 24px !important;
-        }
-
-        /* 3. HIDE HEADER BACKGROUND (But keep button clickable) */
-        header[data-testid="stHeader"] {
-            background-color: transparent !important;
-            pointer-events: none !important; /* Let clicks pass through header area */
-        }
-        
-        /* Enable clicking on the button specifically */
-        header[data-testid="stHeader"] > div:first-child {
-            pointer-events: auto !important;
-        }
-
-        /* Hide Decoration Bar & Toolbar */
-        [data-testid="stDecoration"] { display: none !important; }
-        [data-testid="stToolbar"] { display: none !important; }
-
-        /* 4. LAYOUT SPACING */
-        .block-container { 
-            padding-top: 5rem !important; 
+        /* 4. MENU BUTTON STYLING */
+        /* Style the 'Menu' button to look distinct */
+        div[data-testid="stHorizontalBlock"] button {
+            border-radius: 8px;
+            font-weight: bold;
         }
 
         /* 5. CARD STYLING */
@@ -83,8 +51,6 @@ custom_css = """
             margin-bottom: 8px;
             box-shadow: 0 2px 4px rgba(0,0,0,0.2);
         }
-        
-        /* Force White Text in Cards */
         .stButton button p {
             font-family: 'Source Sans Pro', sans-serif;
             color: #ffffff !important;
@@ -93,24 +59,14 @@ custom_css = """
             line-height: 1.5;
         }
         
-        .stButton button:active {
-            background-color: #000 !important;
-            border-color: #ff4b4b;
-        }
-
-        /* 6. INPUTS & UTILS */
-        .stTextInput input, .stSelectbox div[data-baseweb="select"], .stTextArea textarea {
-            color: white !important;
-            background-color: #1a1a1d !important;
-            border: 1px solid #444 !important;
-        }
-        label, .stMarkdown p, .stToggle p { color: #eee !important; }
-        
+        /* 6. UTILS */
         div[data-testid="stDialog"] { border-radius: 16px; background-color: #262730; }
         .big-btn { display: block; width: 100%; padding: 14px; text-align: center; border-radius: 10px; font-weight: bold; margin-bottom: 10px; text-decoration: none;}
         .call-btn { background-color: #28a745; color: white !important; }
         .wa-btn { background-color: #25D366; color: white !important; }
         .note-history { font-size: 13px; color: #ccc; background: #121212; padding: 12px; border-radius: 8px; max-height: 150px; overflow-y: auto; margin-bottom: 15px; border-left: 4px solid #555; }
+        
+        /* Tabs */
         .stTabs [data-baseweb="tab-list"] button { border-radius: 20px; padding: 6px 12px; font-size: 13px; }
     </style>
 """
@@ -121,6 +77,10 @@ IST = pytz.timezone('Asia/Kolkata')
 def get_ist_time(): return datetime.now(IST).strftime("%Y-%m-%d %H:%M")
 def get_ist_date(): return datetime.now(IST).date()
 
+# --- NAVIGATION STATE ---
+if 'current_page' not in st.session_state:
+    st.session_state['current_page'] = "CRM"
+
 # --- FEEDBACK SYSTEM ---
 def set_feedback(message, type="success"):
     st.session_state['feedback_msg'] = message
@@ -129,9 +89,8 @@ def set_feedback(message, type="success"):
 def show_feedback():
     if 'feedback_msg' in st.session_state and st.session_state['feedback_msg']:
         msg = st.session_state['feedback_msg']
-        typ = st.session_state.get('feedback_type', 'success')
-        if typ == "success": st.toast(msg, icon="✅"); st.success(msg, icon="✅")
-        elif typ == "error": st.toast(msg, icon="❌"); st.error(msg, icon="❌")
+        if st.session_state['feedback_type'] == "success": st.toast(msg, icon="✅")
+        else: st.toast(msg, icon="❌")
         st.session_state['feedback_msg'] = None
 
 # --- DATABASE ---
@@ -202,10 +161,10 @@ if not st.session_state['logged_in']:
                 else: st.error("❌ Invalid")
     st.stop()
 
+# --- HELPER FUNCTIONS ---
 def big_call_btn(num): return f"""<a href="tel:{num}" class="big-btn call-btn">📞 CALL NOW</a>"""
 def big_wa_btn(num, name): return f"""<a href="https://wa.me/91{num}?text=Namaste {name}" class="big-btn wa-btn" target="_blank">💬 WHATSAPP</a>"""
 
-# --- PIPELINE STATUSES ---
 PIPELINE_OPTS = [
     "Naya Lead", "Ringing / No Response", "Call Back Later", 
     "Interested / Send Details", "Follow-up / Thinking", 
@@ -226,6 +185,45 @@ def get_status_icon(status):
     if "lost" in s or "price" in s or "location" in s: return "📉"
     if "junk" in s or "invalid" in s: return "🗑️"
     return "⚪"
+
+# --- MAIN MENU DIALOG ---
+@st.dialog("🍔 Navigation Menu")
+def open_main_menu():
+    st.markdown(f"### 👤 {st.session_state['name']}")
+    st.caption(f"Role: {st.session_state['role']}")
+    st.divider()
+    
+    # 1. Page Navigation
+    col_nav1, col_nav2, col_nav3 = st.columns(3)
+    if col_nav1.button("🏠 CRM", use_container_width=True): 
+        st.session_state['current_page'] = "CRM"; st.rerun()
+    if col_nav2.button("📊 Stats", use_container_width=True): 
+        st.session_state['current_page'] = "Insights"; st.rerun()
+    if col_nav3.button("⚙️ Admin", use_container_width=True): 
+        st.session_state['current_page'] = "Admin"; st.rerun()
+        
+    st.divider()
+    
+    # 2. Quick Add Lead (Only in Menu)
+    with st.expander("➕ Add New Lead", expanded=False):
+        with st.form("menu_add_lead", clear_on_submit=True):
+            name = st.text_input("Name")
+            phone = st.text_input("Phone")
+            src = st.selectbox("Source", ["Meta Ads", "Canopy", "Agent", "Referral"])
+            notes = st.text_area("Notes")
+            if st.form_submit_button("Save Lead", type="primary"):
+                try:
+                    ts = get_ist_time(); new_id = generate_lead_id()
+                    assign = st.session_state['username']
+                    row_data = [new_id, ts, name, phone, src, "", assign, "Naya Lead", "", ts, "", notes, "", "", ""]
+                    leads_sheet.append_row(row_data)
+                    st.success(f"Added {name}!")
+                    time.sleep(1); st.rerun()
+                except Exception as e: st.error(str(e))
+
+    st.divider()
+    if st.button("🚪 Logout", use_container_width=True):
+        st.session_state['logged_in'] = False; st.query_params.clear(); st.rerun()
 
 # --- LEAD MODAL ---
 @st.dialog("📋 Lead Details")
@@ -278,7 +276,7 @@ def open_lead_modal(row_dict, users_df):
         except: u_idx = 0
         new_assign = st.selectbox("Re-Assign To", all_telecallers, index=u_idx)
 
-    if st.button("✅ SAVE & CLOSE", type="primary", use_container_width=True):
+    if st.button("✅ SAVE", type="primary", use_container_width=True):
         try:
             cell = leads_sheet.find(phone)
             if not cell: st.error("❌ Lead not found!")
@@ -363,7 +361,7 @@ def render_leads(df, users_df, label_prefix="", is_bulk=False):
 
 # --- LIVE FEED ---
 @st.fragment(run_every=30)
-def show_live_leads_list(users_df, search_q, status_f):
+def show_crm(users_df, search_q):
     try: data = leads_sheet.get_all_records(); df = pd.DataFrame(data)
     except: return
 
@@ -376,7 +374,6 @@ def show_live_leads_list(users_df, search_q, status_f):
                     (df[assign_col_name] == st.session_state['name']) |
                     (df[assign_col_name] == "TC1")]
 
-    # SEARCH
     if search_q:
         df_search = df[df.astype(str).apply(lambda x: x.str.contains(search_q, case=False)).any(axis=1)]
         st.info(f"🔍 Found {len(df_search)} results")
@@ -385,7 +382,7 @@ def show_live_leads_list(users_df, search_q, status_f):
 
     today = get_ist_date()
     
-    # BULK TOGGLE
+    # BULK TOGGLE & SEARCH
     c_search, c_toggle = st.columns([0.65, 0.35])
     with c_search:
         pass
@@ -422,7 +419,6 @@ def show_live_leads_list(users_df, search_q, status_f):
     
     dead_mask = df['Status'].str.contains("Closed|Booked|Junk|Invalid|Agent", case=False, na=False)
     recycle_mask = df['Status'].str.contains("Lost|Price|Location|Not Interest", case=False, na=False)
-    
     date_action_mask = (df['ParsedDate'].notna()) & (df['ParsedDate'] <= today)
     future_mask = (df['ParsedDate'].notna()) & (df['ParsedDate'] > today)
     new_lead_mask = df['Status'].str.contains("Naya|New", case=False, na=False)
@@ -455,9 +451,8 @@ def show_live_leads_list(users_df, search_q, status_f):
     with tab3: render_leads(recycle_df, users_df, "recycle", is_bulk)
     with tab4: render_leads(history_df, users_df, "history", is_bulk)
 
-# --- ADMIN PANEL (RESTORED) ---
+# --- ADMIN PANEL ---
 def show_admin(users_df):
-    st.header("⚙️ Admin")
     show_feedback()
     c1, c2 = st.columns([1,2])
     with c1:
@@ -471,8 +466,7 @@ def show_admin(users_df):
         
         st.divider()
         st.subheader("📥 Bulk Upload (Meta CSV)")
-        telecaller_list = users_df[users_df['Role'].isin(['Telecaller', 'Sales Specialist', 'Manager'])]['Username'].tolist()
-        selected_agents = st.multiselect("Assign Leads To:", telecaller_list, default=telecaller_list)
+        selected_agents = st.multiselect("Assign Leads To:", users_df['Username'].tolist())
         uploaded_file = st.file_uploader("Choose CSV File", type=['csv'])
         if uploaded_file is not None and st.button("Start Upload"):
             if not selected_agents: st.error("⚠️ Please select at least one agent.")
@@ -487,19 +481,10 @@ def show_admin(users_df):
                     name_idx = next((i for i, c in enumerate(cols) if any(x in c for x in ["full_name", "fullname", "name"])), -1)
                     phone_idx = next((i for i, c in enumerate(cols) if any(x in c for x in ["phone", "mobile", "p:"])), -1)
                     
-                    if name_idx == -1 or phone_idx == -1:
-                        st.error("Could not find 'Name' or 'Phone' columns automatically.")
+                    if name_idx == -1 or phone_idx == -1: st.error("Could not find Name/Phone cols")
                     else:
-                        name_col = df_up.columns[name_idx]
-                        phone_col = df_up.columns[phone_idx]
-                        
-                        ignore_list = [
-                            name_col.lower(), phone_col.lower(),
-                            "id", "created_time", "ad_id", "ad_name", "adset_id", "adset_name",
-                            "campaign_id", "campaign_name", "form_id", "form_name", 
-                            "platform", "is_organic", "date", "start_date", "end_date"
-                        ]
-                        
+                        name_col = df_up.columns[name_idx]; phone_col = df_up.columns[phone_idx]
+                        ignore_list = [name_col.lower(), phone_col.lower(), "id", "created_time", "ad_id", "ad_name", "campaign_name", "form_id", "platform", "is_organic"]
                         extra_cols = [c for c in df_up.columns if c.lower() not in ignore_list]
                         raw_existing = leads_sheet.col_values(4); existing_phones_set = {re.sub(r'\D', '', str(p))[-10:] for p in raw_existing}
                         rows_to_add = []; ts = get_ist_time(); agent_cycle = itertools.cycle(selected_agents)
@@ -512,16 +497,13 @@ def show_admin(users_df):
                                     notes_data = []
                                     for ec in extra_cols:
                                         val = str(row[ec]).strip()
-                                        if val and val.lower() != "nan":
-                                            notes_data.append(f"{ec}: {val}")
+                                        if val and val.lower() != "nan": notes_data.append(f"{ec}: {val}")
                                     final_note = " | ".join(notes_data)
-                                    
                                     new_id = generate_lead_id(); assigned_person = next(agent_cycle)
                                     new_row = [new_id, ts, row[name_col], p_clean, "Meta Ads", "", assigned_person, "Naya Lead", "", ts, "", final_note, "", "", ""]
                                     rows_to_add.append(new_row); existing_phones_set.add(p_last_10)
-                        
                         if rows_to_add: leads_sheet.append_rows(rows_to_add); set_feedback(f"✅ Added {len(rows_to_add)} leads!"); time.sleep(1); st.rerun()
-                except Exception as e: st.error(f"Processing Error: {e}")
+                except Exception as e: st.error(str(e))
 
     with c2:
         st.subheader("Team List")
@@ -531,50 +513,32 @@ def show_admin(users_df):
             dt = st.selectbox("Delete", opts)
             if st.button("❌ Delete"): users_sheet.delete_rows(users_sheet.find(dt).row); set_feedback(f"Deleted {dt}"); st.rerun()
 
-# --- SIDEBAR NAV ---
-with st.sidebar:
-    st.markdown(f"### 👤 {st.session_state['name']}")
-    st.caption(f"Role: {st.session_state['role']}")
-    st.divider()
-    page = st.radio("Navigate", ["🏠 CRM", "📊 Insights", "⚙️ Admin"])
-    st.divider()
-    
-    if page == "🏠 CRM":
-        st.markdown("### ➕ Add New Lead")
-        with st.form("add_lead_sidebar", clear_on_submit=True):
-            name = st.text_input("Name")
-            phone = st.text_input("Phone")
-            src = st.selectbox("Source", ["Meta Ads", "Canopy", "Agent", "Others"])
-            notes = st.text_area("Notes")
-            if st.form_submit_button("Save Lead", type="primary"):
-                 try:
-                    all_phones = leads_sheet.col_values(4)
-                    clean_existing = {re.sub(r'\D', '', str(p))[-10:] for p in all_phones}
-                    clean_new = re.sub(r'\D', '', phone)[-10:]
-                    if clean_new in clean_existing: st.error(f"Duplicate!")
-                    else:
-                        ts = get_ist_time(); new_id = generate_lead_id()
-                        assign = st.session_state['username']
-                        row_data = [new_id, ts, name, phone, src, "", assign, "Naya Lead", "", ts, "", notes, "", "", ""] 
-                        leads_sheet.append_row(row_data)
-                        st.toast(f"✅ Saved {name}!")
-                        time.sleep(1); st.rerun()
-                 except Exception as e: st.error(f"Err: {e}")
+# --- MAIN APP ROUTER ---
+# TOP BAR: SEARCH (Left) | MENU (Right)
+c_search, c_menu = st.columns([0.85, 0.15])
+with c_search:
+    if st.session_state['current_page'] == "CRM":
+        search_query = st.text_input("Search", placeholder="Name or Phone...", label_visibility="collapsed")
+    else:
+        st.write(f"## {st.session_state['current_page']}")
 
-    st.divider()
-    if st.button("🚪 Logout", use_container_width=True):
-        st.session_state['logged_in'] = False; st.query_params.clear(); st.rerun()
+with c_menu:
+    if st.button("🍔", use_container_width=True):
+        open_main_menu()
 
-# --- MAIN SCREEN ---
-if page == "🏠 CRM":
-    search_q = st.text_input("🔍 Search Leads", placeholder="Type Name or Phone...", label_visibility="collapsed")
-    show_live_leads_list(users_df, search_q, None)
+st.divider()
 
-elif page == "📊 Insights":
+# PAGE CONTENT
+if st.session_state['current_page'] == "CRM":
+    # If search bar is empty, pass None to show default view
+    q = search_query if 'search_query' in locals() and search_query else None
+    show_crm(users_df, q)
+
+elif st.session_state['current_page'] == "Insights":
     show_master_insights()
 
-elif page == "⚙️ Admin":
+elif st.session_state['current_page'] == "Admin":
     if st.session_state['role'] == "Manager":
         show_admin(users_df)
     else:
-        st.error("⛔ Access Denied: Managers Only")
+        st.error("⛔ Access Denied")
