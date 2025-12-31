@@ -20,47 +20,50 @@ except ImportError:
 # --- CONFIGURATION ---
 st.set_page_config(page_title="TerraTip CRM", layout="wide", page_icon="🏡", initial_sidebar_state="collapsed")
 
-# --- 1. GLOBAL APP CSS (SEMANTIC VARIABLES FIX) ---
+# --- 1. GLOBAL APP CSS (THEME AWARE) ---
+# We use 'var(--...)' so colors auto-flip between Light and Dark mode
 custom_css = """
     <style>
-        /* Force Dark Mode Base */
-        .stApp { background-color: #0e1117 !important; color: #ffffff !important; }
+        /* BASE APP: Let Streamlit handle the background, we just tweak the components */
         header {visibility: hidden;}
         [data-testid="stSidebarCollapsedControl"] {display: none;}
         
-        /* 1. GLOBAL INPUT FIELD FIX 
-           Forces all text inputs to match the theme (No white text on white bg) */
+        /* 1. INPUT FIELDS (Auto-Theme) */
         .stTextInput input, .stSelectbox div[data-baseweb="select"], .stTextArea textarea {
-            color: white !important;
-            background-color: #1E1E24 !important; /* Fixed Dark Grey */
-            border: 1px solid #444 !important;
+            background-color: var(--secondary-background-color) !important;
+            color: var(--text-color) !important;
+            border: 1px solid var(--text-color) !important;
+            opacity: 0.9; /* Slight transparency to blend borders */
         }
         
-        /* 2. BUTTON FIX (The "Burger" Button Issue)
-           Removes the jarring white background from full-width buttons */
+        /* 2. BUTTONS (Auto-Theme) */
         div.stButton > button {
-            background-color: #1E1E24;
-            color: white;
-            border: 1px solid #41444C;
+            background-color: var(--secondary-background-color);
+            color: var(--text-color);
+            border: 1px solid var(--text-color);
             transition: all 0.3s ease;
         }
         div.stButton > button:hover {
             border-color: #FF4B4B;
             color: #FF4B4B;
-            background-color: #25252b;
         }
         
-        /* Modal Fix */
-        div[data-testid="stDialog"] { background-color: #1E1E24 !important; color: white !important; border: 1px solid #333; }
+        /* 3. MODALS/DIALOGS */
+        div[data-testid="stDialog"] { 
+            background-color: var(--secondary-background-color) !important; 
+            color: var(--text-color) !important;
+            border: 1px solid var(--text-color);
+        }
         
-        /* Action Buttons */
+        /* 4. TEXT FIXES */
+        label, p, .stMarkdown, h1, h2, h3, h4, h5, h6 { 
+            color: var(--text-color) !important; 
+        }
+
+        /* Action Buttons (Keep specific colors as they indicate status) */
         .big-btn { display: block; width: 100%; padding: 12px; text-align: center; border-radius: 8px; font-weight: bold; margin-bottom: 10px; text-decoration: none; font-size: 15px; color: white !important; }
         .call-btn { background-color: #28a745; }
         .wa-btn { background-color: #25D366; }
-        
-        /* Menu Buttons */
-        div[data-testid="stHorizontalBlock"] button { border-radius: 8px; font-weight: bold; border: 1px solid #444; }
-        label, p, .stMarkdown { color: #eee !important; }
     </style>
 """
 st.markdown(custom_css, unsafe_allow_html=True)
@@ -265,7 +268,7 @@ def open_lead_modal(row_dict, users_df):
                 leads_sheet.batch_update(updates); st.rerun()
         except Exception as e: st.error(str(e))
 
-# --- 2. CARD CSS INJECTOR (THE DARK MODE FIX) ---
+# --- 2. CARD CSS INJECTOR (THEME AWARE FIX) ---
 CARD_STYLE = """
 <style>
     body { margin: 0; padding: 0; font-family: sans-serif; background-color: transparent; }
@@ -273,17 +276,21 @@ CARD_STYLE = """
     a.card-link { text-decoration: none; color: inherit; display: block; }
     
     .lead-card {
-        background-color: #1E1E24; /* FORCE DARK BG */
-        border: 1px solid #333;
+        background-color: var(--secondary-background-color); /* AUTO-THEME BACKGROUND */
+        border: 1px solid var(--text-color);
+        opacity: 0.95; /* Prevent border from being too harsh */
         border-radius: 12px;
         padding: 14px 16px;
         margin-bottom: 12px;
-        box-shadow: 0 4px 6px rgba(0,0,0,0.3);
+        box-shadow: 0 4px 6px rgba(0,0,0,0.1);
         position: relative;
         overflow: hidden;
     }
     
-    .lead-card:hover { background-color: #25252b; border-color: #666; }
+    .lead-card:hover { 
+        filter: brightness(110%); /* Universal hover effect */
+        border-color: #666; 
+    }
     
     .status-strip {
         position: absolute; left: 0; top: 0; bottom: 0; width: 5px;
@@ -298,7 +305,8 @@ CARD_STYLE = """
         display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;
     }
     .card-name {
-        font-size: 16px; font-weight: 700; color: #FFFFFF; /* Pure White */
+        font-size: 16px; font-weight: 700; 
+        color: var(--text-color); /* AUTO-THEME TEXT */
         white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 60%;
     }
     
@@ -306,27 +314,35 @@ CARD_STYLE = """
     .card-tag {
         font-size: 10px; font-weight: 700; text-transform: uppercase;
         padding: 4px 8px; border-radius: 12px;
-        background-color: #3d2212; color: #FF9F43; border: 1px solid #5e3718;
+        background-color: var(--background-color); color: var(--text-color); 
+        border: 1px solid var(--text-color);
         white-space: nowrap;
+        opacity: 0.8;
     }
 
     /* BODY */
     .card-body {
-        font-size: 14px; color: #BBB; /* Light Grey */
+        font-size: 14px; 
+        color: var(--text-color); /* AUTO-THEME TEXT */
+        opacity: 0.8;
         margin-bottom: 10px; display: flex; align-items: center; gap: 6px;
     }
 
     /* FOOTER (Split) */
     .card-footer {
         display: flex; justify-content: space-between; align-items: center;
-        border-top: 1px solid #333; padding-top: 8px;
-        font-size: 12px; color: #777; /* Dark Grey */
+        border-top: 1px solid var(--text-color); 
+        opacity: 0.7;
+        padding-top: 8px;
+        font-size: 12px; 
+        color: var(--text-color);
         font-family: monospace;
     }
     
     .footer-left {
         font-weight: 600;
         display: flex; align-items: center; gap: 4px;
+        opacity: 1 !important; /* Keep status text bright */
     }
     .text-red { color: #FF4B4B; }
     .text-orange { color: #FFA500; }
