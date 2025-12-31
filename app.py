@@ -21,22 +21,21 @@ except ImportError:
 st.set_page_config(page_title="TerraTip CRM", layout="wide", page_icon="🏡", initial_sidebar_state="collapsed")
 
 # --- 1. GLOBAL APP CSS (THEME AWARE) ---
-# We use 'var(--...)' so colors auto-flip between Light and Dark mode
 custom_css = """
     <style>
-        /* BASE APP: Let Streamlit handle the background, we just tweak the components */
+        /* BASE APP */
         header {visibility: hidden;}
         [data-testid="stSidebarCollapsedControl"] {display: none;}
         
-        /* 1. INPUT FIELDS (Auto-Theme) */
+        /* 1. INPUT FIELDS */
         .stTextInput input, .stSelectbox div[data-baseweb="select"], .stTextArea textarea {
             background-color: var(--secondary-background-color) !important;
             color: var(--text-color) !important;
             border: 1px solid var(--text-color) !important;
-            opacity: 0.9; /* Slight transparency to blend borders */
+            opacity: 0.9; 
         }
         
-        /* 2. BUTTONS (Auto-Theme) */
+        /* 2. BUTTONS */
         div.stButton > button {
             background-color: var(--secondary-background-color);
             color: var(--text-color);
@@ -60,7 +59,7 @@ custom_css = """
             color: var(--text-color) !important; 
         }
 
-        /* Action Buttons (Keep specific colors as they indicate status) */
+        /* Action Buttons */
         .big-btn { display: block; width: 100%; padding: 12px; text-align: center; border-radius: 8px; font-weight: bold; margin-bottom: 10px; text-decoration: none; font-size: 15px; color: white !important; }
         .call-btn { background-color: #28a745; }
         .wa-btn { background-color: #25D366; }
@@ -87,7 +86,7 @@ def format_date_only(val_str):
     if not val_str or len(str(val_str)) < 5: return "-"
     try:
         d = datetime.strptime(str(val_str).strip(), "%Y-%m-%d").date()
-        if d == get_ist_date(): return "Today"
+        if d == get_ist_date(): return "Aaj" # Hinglish
         return d.strftime("%d-%b")
     except: return "-"
 
@@ -157,28 +156,51 @@ if not st.session_state['logged_in']:
                 else: st.error("❌ Invalid")
     st.stop()
 
-# --- HELPERS ---
-def big_call_btn(num): return f"""<a href="tel:{num}" class="big-btn call-btn">📞 CALL NOW</a>"""
-def big_wa_btn(num, name): return f"""<a href="https://wa.me/91{num}?text=Namaste {name}" class="big-btn wa-btn" target="_blank">💬 WHATSAPP</a>"""
+# --- HELPERS (HINGLISH) ---
+def big_call_btn(num): return f"""<a href="tel:{num}" class="big-btn call-btn">📞 Call Milao</a>"""
+def big_wa_btn(num, name): return f"""<a href="https://wa.me/91{num}?text=Namaste {name}" class="big-btn wa-btn" target="_blank">💬 WhatsApp Karo</a>"""
 
+# --- NEW OPTIMIZED PIPELINE (HINGLISH EDITION) ---
+# Designed for Lucknow/Unnao Telecallers to understand instantly.
 PIPELINE_OPTS = [
-    "Naya Lead", "Ringing / No Response", "Call Back Later", 
-    "Interested / Send Details", "Follow-up / Thinking", 
-    "Site Visit Scheduled", "Negotiation / Visit Done", 
-    "Sale Closed", "Lost (Price / Location)", "Junk / Invalid / Broker"
+    # --- PHASE 1: CONNECTING ---
+    "Naya Lead",
+    "Ringing (Phone nahi uthaya)",
+    "Switch Off / Network Issue",
+    "Call Back (Busy tha)",
+
+    # --- PHASE 2: NURTURING ---
+    "Interested (Details Bheji)",
+    "Follow-up (Baat chal rahi hai)",
+    "RNR (Phone uthana band)",  # Ghosting
+    
+    # --- PHASE 3: SITE VISIT ---
+    "Site Visit Scheduled (Date Fix)",
+    "Visit Done (Rate ki baat)",
+    "Visit Done (Pasand nahi aaya)",
+    "Visit No-Show (Gadi gayi par aaya nahi)",
+
+    # --- PHASE 4: CLOSING / DEAD ---
+    "Sale Closed (Booking)",
+    "Lost (Mehenga / Location issue)",
+    "Junk / Broker / Bekar"
 ]
 
 def get_status_icon(status):
     s = str(status).lower().strip()
     if "naya" in s: return "⚡"
-    if "ring" in s: return "📞"
-    if "visit" in s: return "🗓"
-    if "lost" in s or "price" in s: return "📉"
-    if "interest" in s: return "🔥"
-    return "⚪"
+    if "switch" in s: return "📴"
+    if "visit scheduled" in s: return "🗓️"
+    if "visit done" in s: return "✅"
+    if "no-show" in s: return "🚫"
+    if "rnr" in s or "uthana band" in s: return "😶"
+    if "lost" in s or "mehenga" in s: return "📉"
+    if "interest" in s or "baat" in s: return "🔥"
+    if "junk" in s or "bekar" in s: return "🗑️"
+    return "📞"
 
 # --- MENU ---
-@st.dialog("🍔 Navigation")
+@st.dialog("🍔 Menu")
 def open_main_menu():
     st.markdown(f"**👤 {st.session_state['name']}**")
     st.caption(f"Role: {st.session_state['role']}")
@@ -188,11 +210,11 @@ def open_main_menu():
     if c2.button("📊 Stats", use_container_width=True): st.session_state['current_page'] = "Insights"; st.rerun()
     if c3.button("⚙️ Admin", use_container_width=True): st.session_state['current_page'] = "Admin"; st.rerun()
     st.divider()
-    with st.expander("➕ New Lead", expanded=False):
+    with st.expander("➕ Naya Lead Jodo", expanded=False):
         with st.form("menu_add"):
-            name = st.text_input("Name"); phone = st.text_input("Phone")
-            src = st.selectbox("Source", ["Meta Ads", "Canopy", "Agent", "Referral"])
-            notes = st.text_area("Notes")
+            name = st.text_input("Naam"); phone = st.text_input("Mobile Number")
+            src = st.selectbox("Source (Kahan se aaya?)", ["Meta Ads", "Canopy", "Agent", "Referral", "Cold Call"])
+            notes = st.text_area("Note")
             if st.form_submit_button("Save"):
                 try:
                     ts = get_ist_time(); new_id = generate_lead_id()
@@ -202,7 +224,7 @@ def open_main_menu():
     st.divider()
     if st.button("🚪 Logout", use_container_width=True): st.session_state['logged_in'] = False; st.rerun()
 
-# --- LEAD MODAL ---
+# --- LEAD MODAL (HINGLISH) ---
 @st.dialog("📋 Lead Details")
 def open_lead_modal(row_dict, users_df):
     phone = str(row_dict.get('Phone', '')).replace(',', '').replace('.', '')
@@ -218,34 +240,44 @@ def open_lead_modal(row_dict, users_df):
     with c2: st.markdown(big_wa_btn(phone, name), unsafe_allow_html=True)
     st.caption(f"**{name}** | {phone}")
     
+    # Robust index finder for new Pipeline statuses
     def get_index(val, opts):
         val = str(val).lower().strip()
+        # 1. Exact Match
         for i, x in enumerate(opts):
             if x.lower() == val: return i
-        if "price" in val: return opts.index("Lost (Price / Location)")
+        # 2. Partial Match (Fallback for old data)
+        if "visit" in val and "schedule" in val: 
+            return next((i for i, x in enumerate(opts) if "Site Visit Scheduled" in x), 0)
+        if "no-show" in val: 
+            return next((i for i, x in enumerate(opts) if "No-Show" in x), 0)
+        if "ringing" in val:
+             return next((i for i, x in enumerate(opts) if "Ringing" in x), 0)
         return 0
 
-    new_status = st.selectbox("Status", PIPELINE_OPTS, index=get_index(status, PIPELINE_OPTS))
-    new_tag = st.text_input("🏷️ Label (e.g. VIP, Old Data)", value=curr_tag)
+    new_status = st.selectbox("Status (Kya hua?)", PIPELINE_OPTS, index=get_index(status, PIPELINE_OPTS))
+    new_tag = st.text_input("🏷️ Label (e.g. VIP, Hot)", value=curr_tag)
     
     if len(str(notes)) > 2: st.markdown(f"<div class='note-history'>{notes}</div>", unsafe_allow_html=True)
-    new_note = st.text_input("New Note")
+    new_note = st.text_input("New Note (Likho kya baat hui)")
     
     today = get_ist_date()
     col_d1, col_d2 = st.columns([2, 1])
-    date_opt = col_d1.radio("Follow-up", ["None", "Tom", "3 Days", "Custom"], horizontal=True, label_visibility="collapsed")
+    # HINGLISH DATE OPTIONS
+    date_opt = col_d1.radio("Follow-up Kab?", ["Koi Nahi", "Kal (Tom)", "3 Din", "Custom"], horizontal=True, label_visibility="collapsed")
+    
     final_date = None
-    if date_opt == "Custom": final_date = st.date_input("Date", min_value=today)
-    elif date_opt == "Tom": final_date = today + timedelta(days=1)
-    elif date_opt == "3 Days": final_date = today + timedelta(days=3)
+    if date_opt == "Custom": final_date = st.date_input("Tareekh Chuno", min_value=today)
+    elif date_opt == "Kal (Tom)": final_date = today + timedelta(days=1)
+    elif date_opt == "3 Din": final_date = today + timedelta(days=3)
     
     new_assign = None
     if st.session_state['role'] == "Manager":
         try: u_idx = users_df['Username'].tolist().index(row_dict.get('Assign', ''))
         except: u_idx = 0
-        new_assign = st.selectbox("Assign", users_df['Username'].tolist(), index=u_idx)
+        new_assign = st.selectbox("Assign Kisko?", users_df['Username'].tolist(), index=u_idx)
 
-    if st.button("✅ SAVE", type="primary", use_container_width=True):
+    if st.button("✅ Save Karo", type="primary", use_container_width=True):
         try:
             cell = leads_sheet.find(phone)
             if not cell: st.error("Not found")
@@ -268,86 +300,56 @@ def open_lead_modal(row_dict, users_df):
                 leads_sheet.batch_update(updates); st.rerun()
         except Exception as e: st.error(str(e))
 
-# --- 2. CARD CSS INJECTOR (THEME AWARE FIX) ---
+# --- 2. CARD DESIGN ---
 CARD_STYLE = """
 <style>
-    body { margin: 0; padding: 0; font-family: sans-serif; background-color: transparent; }
-    
+    body { margin: 0; padding: 0; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }
     a.card-link { text-decoration: none; color: inherit; display: block; }
     
     .lead-card {
-        background-color: var(--secondary-background-color); /* AUTO-THEME BACKGROUND */
-        border: 1px solid var(--text-color);
-        opacity: 0.95; /* Prevent border from being too harsh */
+        background-color: var(--secondary-background-color);
+        border: 1px solid rgba(128, 128, 128, 0.2);
         border-radius: 12px;
-        padding: 14px 16px;
-        margin-bottom: 12px;
-        box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+        padding: 16px;
+        padding-left: 24px;
+        margin-bottom: 14px;
+        box-shadow: 0 2px 4px rgba(0,0,0,0.05);
         position: relative;
+        transition: transform 0.2s, box-shadow 0.2s;
         overflow: hidden;
     }
-    
-    .lead-card:hover { 
-        filter: brightness(110%); /* Universal hover effect */
-        border-color: #666; 
+    .lead-card:hover {
+        transform: translateY(-3px);
+        box-shadow: 0 6px 12px rgba(0,0,0,0.15);
+        border-color: rgba(128, 128, 128, 0.4);
     }
     
     .status-strip {
-        position: absolute; left: 0; top: 0; bottom: 0; width: 5px;
+        position: absolute; left: 0; top: 0; bottom: 0; width: 6px;
+        border-top-left-radius: 12px; border-bottom-left-radius: 12px;
     }
-    .strip-red { background-color: #FF4B4B; }
-    .strip-orange { background-color: #FFA500; }
-    .strip-green { background-color: #28a745; }
-    .strip-grey { background-color: #555; }
+    .strip-red { background-color: #FF5252; }
+    .strip-orange { background-color: #FFA726; }
+    .strip-green { background-color: #66BB6A; }
+    .strip-grey { background-color: #9E9E9E; }
 
-    /* HEADER */
-    .card-header {
-        display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;
-    }
-    .card-name {
-        font-size: 16px; font-weight: 700; 
-        color: var(--text-color); /* AUTO-THEME TEXT */
-        white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 60%;
-    }
+    .card-top { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 6px; }
+    .card-name { font-size: 1.15rem; font-weight: 700; color: var(--text-color); line-height: 1.2; }
+    .card-subtext { font-size: 0.85rem; color: var(--text-color); opacity: 0.7; margin-top: 2px; display: flex; align-items: center; gap: 6px; }
     
-    /* PILL TAG (Right Side) */
-    .card-tag {
-        font-size: 10px; font-weight: 700; text-transform: uppercase;
-        padding: 4px 8px; border-radius: 12px;
-        background-color: var(--background-color); color: var(--text-color); 
-        border: 1px solid var(--text-color);
-        white-space: nowrap;
-        opacity: 0.8;
-    }
+    .pill-badge { font-size: 0.75rem; font-weight: 600; text-transform: uppercase; padding: 3px 8px; border-radius: 6px; background-color: rgba(255, 255, 255, 0.1); border: 1px solid rgba(128, 128, 128, 0.3); color: var(--text-color); white-space: nowrap; }
+    .source-badge { background-color: rgba(0, 123, 255, 0.1); color: #4287f5; border: none; }
 
-    /* BODY */
-    .card-body {
-        font-size: 14px; 
-        color: var(--text-color); /* AUTO-THEME TEXT */
-        opacity: 0.8;
-        margin-bottom: 10px; display: flex; align-items: center; gap: 6px;
-    }
+    .card-body { margin: 12px 0; display: flex; align-items: center; gap: 10px; }
+    .status-text { font-size: 1rem; color: var(--text-color); font-weight: 500; }
 
-    /* FOOTER (Split) */
-    .card-footer {
-        display: flex; justify-content: space-between; align-items: center;
-        border-top: 1px solid var(--text-color); 
-        opacity: 0.7;
-        padding-top: 8px;
-        font-size: 12px; 
-        color: var(--text-color);
-        font-family: monospace;
-    }
+    .card-footer { display: flex; justify-content: space-between; align-items: center; border-top: 1px solid rgba(128, 128, 128, 0.2); padding-top: 10px; font-size: 0.8rem; color: var(--text-color); opacity: 0.8; }
+    .footer-highlight { font-weight: 600; opacity: 1; display: flex; align-items: center; gap: 5px; }
     
-    .footer-left {
-        font-weight: 600;
-        display: flex; align-items: center; gap: 4px;
-        opacity: 1 !important; /* Keep status text bright */
-    }
-    .text-red { color: #FF4B4B; }
-    .text-orange { color: #FFA500; }
-    .text-green { color: #28a745; }
-    .text-blue { color: #4287f5; }
+    .txt-red { color: #FF5252; }
+    .txt-green { color: #66BB6A; }
+    .txt-orange { color: #FFA726; }
+    .txt-blue { color: #42A5F5; }
 </style>
 """
 
@@ -356,66 +358,70 @@ def generate_cards_html(dframe, context):
     today = get_ist_date()
     
     for i, row in dframe.iterrows():
+        # DATA PREP
         phone = str(row.get('Phone', '')).replace(',', '').replace('.', '')
+        display_phone = phone if len(phone) < 11 else f"+91 {phone[-10:]}"
         name = str(row.get('Client Name', 'Unknown'))
         raw_status = str(row.get('Status', ''))
+        source = str(row.get('Source', '')).strip() 
         
-        # Tag
         tag_col = next((c for c in row.index if "Tag" in c or "Label" in c), None)
         tag_val = str(row.get(tag_col, '')).strip() if tag_col else ""
-        tag_html = f"<div class='card-tag'>{tag_val}</div>" if tag_val and tag_val.lower() != "nan" else ""
         
-        # Date Logic
         f_val = str(row.get(next((c for c in row.index if "Follow" in c), 'Follow'), '')).strip()
         t_val = str(row.get(next((c for c in row.index if "Last Call" in c), 'Last'), '')).strip()
         last_update = format_datetime(t_val)
         
-        # Default styling
         strip_class = "strip-grey"
-        next_date_html = ""
+        footer_html = ""
         
-        # Context-Specific Logic
         if context == "Action":
-            # Action Tab: Show Urgency
             strip_class = "strip-red"
             try:
                 d = datetime.strptime(str(f_val).strip(), "%Y-%m-%d").date()
-                if d < today: next_date_html = "<span class='footer-left text-red'>⚠️ Overdue</span>"
-                elif d == today: next_date_html = "<span class='footer-left text-orange'>🔥 Today</span>"
-                else: next_date_html = "<span class='footer-left text-green'>⚡ New</span>"
-            except: next_date_html = "<span class='footer-left text-green'>⚡ New</span>"
+                if d < today: footer_html = "<span class='footer-highlight txt-red'>⚠️ Overdue</span>"
+                elif d == today: footer_html = "<span class='footer-highlight txt-orange'>🔥 Aaj Karo</span>"
+                else: footer_html = "<span class='footer-highlight txt-green'>⚡ Action</span>"
+            except: footer_html = "<span class='footer-highlight txt-green'>⚡ Action</span>"
             
         elif context == "Future":
-            # Future Tab: Show Date
             strip_class = "strip-green"
-            next_date_html = f"<span class='footer-left text-blue'>📅 {format_date_only(f_val)}</span>"
+            footer_html = f"<span class='footer-highlight txt-blue'>📅 {format_date_only(f_val)}</span>"
             
         elif context == "Recycle":
             strip_class = "strip-orange"
-            next_date_html = "<span class='footer-left'>♻️ Recycle</span>"
+            footer_html = "<span class='footer-highlight'>♻️ Recycle</span>"
             
-        else: # History
+        else: 
             strip_class = "strip-grey"
-            next_date_html = "<span class='footer-left'>🔒 Closed</span>"
+            footer_html = "<span>🔒 Closed</span>"
 
         icon = get_status_icon(raw_status)
         display_status = "Lost" if "Lost" in raw_status else raw_status.split(" /")[0]
+        
+        tag_html = f"<span class='pill-badge'>{tag_val}</span>" if tag_val and tag_val.lower() != "nan" else ""
+        src_html = f"<span class='pill-badge source-badge'>{source}</span>" if source and source.lower() != "nan" else ""
 
         card = f"""
         <a href='#' id='{phone}' class='card-link'>
             <div class='lead-card'>
                 <div class='status-strip {strip_class}'></div>
-                <div class='card-header'>
-                    <div class='card-name'>{name}</div>
+                <div class='card-top'>
+                    <div>
+                        <div class='card-name'>{name}</div>
+                        <div class='card-subtext'>
+                            {src_html} <span>📞 {display_phone}</span>
+                        </div>
+                    </div>
                     {tag_html}
                 </div>
                 <div class='card-body'>
-                    <span>{icon}</span>
-                    <span>{display_status}</span>
+                    <span style='font-size:1.4rem;'>{icon}</span>
+                    <span class='status-text'>{display_status}</span>
                 </div>
                 <div class='card-footer'>
-                    {next_date_html}
-                    <div>🕒 {last_update}</div>
+                    {footer_html}
+                    <span>🕒 {last_update}</span>
                 </div>
             </div>
         </a>
@@ -452,13 +458,12 @@ def show_crm(users_df, search_q):
     if st.session_state['role'] == "Manager":
         with c_toggle: is_bulk = st.toggle("⚡ Bulk")
     
-    # --- BULK ACTIONS (RESTORED) ---
     if is_bulk:
         st.info("Select leads")
         c1, c2, c3 = st.columns([1.5, 1.5, 1])
         with c1:
             assign_target = st.selectbox("Assign", users_df['Username'].tolist(), label_visibility="collapsed", placeholder="User")
-            if st.button("Assign"):
+            if st.button("Assign Karo"):
                 phones = [k.split("_")[-1] for k, v in st.session_state.items() if k.startswith("sel_") and v]
                 if phones:
                     try:
@@ -473,7 +478,7 @@ def show_crm(users_df, search_q):
                     except: st.error("Error")
         with c2:
             label_text = st.text_input("Label", placeholder="Tag", label_visibility="collapsed")
-            if st.button("Tag"):
+            if st.button("Tag Karo"):
                 phones = [k.split("_")[-1] for k, v in st.session_state.items() if k.startswith("sel_") and v]
                 if phones and label_text:
                     try:
@@ -494,7 +499,7 @@ def show_crm(users_df, search_q):
                         all_v = leads_sheet.get_all_values()
                         to_del = [i+1 for i,r in enumerate(all_v) if len(r)>3 and str(r[3]).replace(',','').replace('.','') in phones]
                         for r in sorted(to_del, reverse=True): leads_sheet.delete_rows(r)
-                        st.success("Del"); time.sleep(1); st.rerun()
+                        st.success("Deleted"); time.sleep(1); st.rerun()
                     except: st.error("Error")
 
     def parse_date(v):
@@ -509,21 +514,19 @@ def show_crm(users_df, search_q):
     action_cond = (df['PD'].notna() & (df['PD'] <= today)) | df['Status'].str.contains("Naya|New", case=False, na=False)
     future_cond = (df['PD'].notna() & (df['PD'] > today))
     
-    t1, t2, t3, t4 = st.tabs([f"🔥 Action", f"📅 Future", f"♻️ Recycle", f"❌ Closed"])
+    # HINGLISH TABS
+    t1, t2, t3, t4 = st.tabs([f"🔥 Action (Aaj ka)", f"📅 Future (Aage ka)", f"♻️ Recycle", f"❌ Closed"])
     
     def render_tab_content(dframe, ctx, key_prefix):
-        if dframe.empty: st.info("Empty")
+        if dframe.empty: st.info("Koi lead nahi hai.")
         else:
             if ctx == "Future": dframe = dframe.sort_values(by='PD')
-            
             if is_bulk:
-                # Bulk Mode: Standard Buttons
                 for i, row in dframe.iterrows():
                     c1, c2 = st.columns([0.15, 0.85])
                     c1.checkbox("", key=f"sel_{key_prefix}_{row['Phone']}")
                     c2.button(f"{row['Client Name']}", key=f"btn_{key_prefix}_{row['Phone']}", use_container_width=True)
             else:
-                # View Mode: HTML Cards (CSS Injected)
                 html = generate_cards_html(dframe, ctx)
                 clicked = click_detector(html, key=f"click_{key_prefix}")
                 if clicked:
@@ -539,18 +542,18 @@ def show_crm(users_df, search_q):
 def show_admin(users_df):
     c1, c2 = st.columns([1,2])
     with c1:
-        st.subheader("Create User")
+        st.subheader("Naya User Banao")
         with st.form("nu"):
-            u = st.text_input("User"); p = st.text_input("Pass", type="password")
-            n = st.text_input("Name"); r = st.selectbox("Role", ["Telecaller", "Sales Specialist", "Manager"])
-            if st.form_submit_button("Create"):
+            u = st.text_input("Username"); p = st.text_input("Password", type="password")
+            n = st.text_input("Naam (Full Name)"); r = st.selectbox("Role", ["Telecaller", "Sales Specialist", "Manager"])
+            if st.form_submit_button("Create User"):
                 users_sheet.append_row([u, hash_pass(p), r, n]); st.success("Created!"); st.rerun()
         st.divider()
         st.subheader("📥 Upload CSV")
-        ag = st.multiselect("Assign", users_df['Username'].tolist())
-        up = st.file_uploader("CSV", type=['csv'])
+        ag = st.multiselect("Assign To", users_df['Username'].tolist())
+        up = st.file_uploader("CSV File Chuno", type=['csv'])
         if up and st.button("Upload"):
-            if not ag: st.error("Select Agent!")
+            if not ag: st.error("Agent Select Karo!")
             else:
                 try:
                     try: df_up = pd.read_csv(up, encoding='utf-8')
@@ -558,7 +561,7 @@ def show_admin(users_df):
                     cols = [c.lower() for c in df_up.columns]
                     n_i = next((i for i, c in enumerate(cols) if "name" in c), -1)
                     p_i = next((i for i, c in enumerate(cols) if "phone" in c or "mobile" in c), -1)
-                    if n_i == -1 or p_i == -1: st.error("Column missing")
+                    if n_i == -1 or p_i == -1: st.error("Name ya Phone column nahi mila")
                     else:
                         nc = df_up.columns[n_i]; pc = df_up.columns[p_i]
                         ex_phones = set(re.sub(r'\D', '', str(p))[-10:] for p in leads_sheet.col_values(4))
@@ -568,7 +571,7 @@ def show_admin(users_df):
                             if len(p_clean)==10 and p_clean not in ex_phones:
                                 rows.append([generate_lead_id(), ts, r[nc], p_clean, "Upload", "", next(cyc), "Naya Lead", "", ts, "", "", "", "", ""])
                                 ex_phones.add(p_clean)
-                        if rows: leads_sheet.append_rows(rows); st.success(f"Added {len(rows)}"); time.sleep(1); st.rerun()
+                        if rows: leads_sheet.append_rows(rows); st.success(f"Added {len(rows)} leads"); time.sleep(1); st.rerun()
                 except Exception as e: st.error(str(e))
     with c2:
         st.subheader("Team")
@@ -576,14 +579,14 @@ def show_admin(users_df):
         opts = [x for x in users_df['Username'].unique() if x != st.session_state['username']]
         if opts:
             d_u = st.selectbox("Delete User", opts)
-            if st.button("❌ Delete"):
+            if st.button("❌ Delete User"):
                 cell = users_sheet.find(d_u); users_sheet.delete_rows(cell.row); st.success("Deleted"); st.rerun()
 
 # --- ROUTER ---
 c_search, c_menu = st.columns([0.85, 0.15])
 with c_search:
     if st.session_state['current_page'] == "CRM":
-        search_query = st.text_input("Search", placeholder="Search...", label_visibility="collapsed")
+        search_query = st.text_input("Search", placeholder="Naam ya Number likho...", label_visibility="collapsed")
     else: st.write(f"## {st.session_state['current_page']}")
 
 with c_menu:
@@ -595,7 +598,7 @@ if st.session_state['current_page'] == "CRM":
     q = search_query if 'search_query' in locals() and search_query else None
     show_crm(users_df, q)
 elif st.session_state['current_page'] == "Insights":
-    st.title("📊 Stats"); st.info("Analytics coming soon.")
+    st.title("📊 Stats"); st.info("Jaldi Aayega")
 elif st.session_state['current_page'] == "Admin":
     if st.session_state['role'] == "Manager": show_admin(users_df)
     else: st.error("⛔ Access Denied")
