@@ -158,32 +158,23 @@ if not st.session_state['logged_in']:
 
 # --- HELPERS (HINGLISH) ---
 def big_call_btn(num): return f"""<a href="tel:{num}" class="big-btn call-btn">📞 Call Milao</a>"""
-def big_wa_btn(num, name): return f"""<a href="https://wa.me/91{num}?text=Namaste {name}" class="big-btn wa-btn" target="_blank">💬 WhatsApp Karo</a>"""
 
-# --- NEW OPTIMIZED PIPELINE (HINGLISH EDITION) ---
-# Designed for Lucknow/Unnao Telecallers to understand instantly.
+# --- DATA: PROJECT LINKS & LOCATION ---
+PROJECT_DATA = {
+    "Unnao Ajgain Plots": "https://drive.google.com/drive/folders/1m5JMO90hcSih9Qily64ZGEpVj-_FuYuQ?usp=drive_link",
+    "Deewan Estate": "https://drive.google.com/drive/folders/1TKtTytjEDPOR_AwTGWltVmI3DCFqThzF?usp=drive_link",
+    "Rustle Court": "https://drive.google.com/drive/folders/1RRdAwiT2BHiVxasvwtOnn-MzP1GJErW-?usp=drive_link",
+    "Vedic Village": "https://drive.google.com/drive/folders/1NMAyKrigCfV66k7JsLJTH6NINpeFgwcR?usp=drive_link",
+    "Ramayana Enclave": "https://drive.google.com/drive/folders/1fnuXfaXEh2KmsNt8Z7d5hPrujb1Vy-U8?usp=drive_link"
+}
+OFFICE_LINK = "https://maps.google.com/?q=26.718357,80.843513"
+
+# --- PIPELINE (HINGLISH) ---
 PIPELINE_OPTS = [
-    # --- PHASE 1: CONNECTING ---
-    "Naya Lead",
-    "Ringing (Phone nahi uthaya)",
-    "Switch Off / Network Issue",
-    "Call Back (Busy tha)",
-
-    # --- PHASE 2: NURTURING ---
-    "Interested (Details Bheji)",
-    "Follow-up (Baat chal rahi hai)",
-    "RNR (Phone uthana band)",  # Ghosting
-    
-    # --- PHASE 3: SITE VISIT ---
-    "Site Visit Scheduled (Date Fix)",
-    "Visit Done (Rate ki baat)",
-    "Visit Done (Pasand nahi aaya)",
-    "Visit No-Show (Gadi gayi par aaya nahi)",
-
-    # --- PHASE 4: CLOSING / DEAD ---
-    "Sale Closed (Booking)",
-    "Lost (Mehenga / Location issue)",
-    "Junk / Broker / Bekar"
+    "Naya Lead", "Ringing (Phone nahi uthaya)", "Switch Off / Network Issue", "Call Back (Busy tha)",
+    "Interested (Details Bheji)", "Follow-up (Baat chal rahi hai)", "RNR (Phone uthana band)",
+    "Site Visit Scheduled (Date Fix)", "Visit Done (Rate ki baat)", "Visit Done (Pasand nahi aaya)",
+    "Visit No-Show (Gadi gayi par aaya nahi)", "Sale Closed (Booking)", "Lost (Mehenga / Location issue)", "Junk / Broker / Bekar"
 ]
 
 def get_status_icon(status):
@@ -224,7 +215,7 @@ def open_main_menu():
     st.divider()
     if st.button("🚪 Logout", use_container_width=True): st.session_state['logged_in'] = False; st.rerun()
 
-# --- LEAD MODAL (HINGLISH) ---
+# --- LEAD MODAL (UPDATED WITH COPY-PASTE) ---
 @st.dialog("📋 Lead Details")
 def open_lead_modal(row_dict, users_df):
     phone = str(row_dict.get('Phone', '')).replace(',', '').replace('.', '')
@@ -235,24 +226,42 @@ def open_lead_modal(row_dict, users_df):
     tag_col = next((k for k in row_dict.keys() if "Tag" in k or "Label" in k), None)
     curr_tag = str(row_dict.get(tag_col, '')) if tag_col else ""
     
-    c1, c2 = st.columns(2)
-    with c1: st.markdown(big_call_btn(phone), unsafe_allow_html=True)
-    with c2: st.markdown(big_wa_btn(phone, name), unsafe_allow_html=True)
-    st.caption(f"**{name}** | {phone}")
+    # 1. TOP ACTIONS: Call Button (Left) & WhatsApp Tools (Right)
+    c1, c2 = st.columns([1, 1])
+    with c1: 
+        st.markdown(big_call_btn(phone), unsafe_allow_html=True)
+        st.caption(f"**{name}** | {phone}")
     
-    # Robust index finder for new Pipeline statuses
+    with c2:
+        st.write("💬 **WhatsApp Templates**")
+        # Template Selector
+        wa_opts = ["Intro / Greeting", "Office Location"] + list(PROJECT_DATA.keys())
+        msg_choice = st.selectbox("Message Select Karo:", wa_opts, label_visibility="collapsed")
+        
+        # Logic to generate message
+        msg_text = ""
+        if msg_choice == "Intro / Greeting":
+            msg_text = f"Namaste {name} ji, TerraTip se baat kar raha hu. Kya aap Lucknow/Unnao me property dekh rahe hain?"
+        elif msg_choice == "Office Location":
+            msg_text = f"Namaste {name} ji, Site visit ke liye humara office yahan hai: {OFFICE_LINK}. Aane se pehle call kar lijiyega."
+        elif msg_choice in PROJECT_DATA:
+            link = PROJECT_DATA[msg_choice]
+            msg_text = f"Namaste {name} ji, *{msg_choice}* project ki photos aur videos is link par hain: {link}. Batayein kab visit plan karein?"
+            
+        # COPY BUTTON (st.code gives a free copy button at top right)
+        st.code(msg_text, language='text')
+        st.caption("👆 Upar copy button se copy karein")
+
+    st.divider()
+
+    # 2. STATUS & UPDATE FORM
     def get_index(val, opts):
         val = str(val).lower().strip()
-        # 1. Exact Match
         for i, x in enumerate(opts):
             if x.lower() == val: return i
-        # 2. Partial Match (Fallback for old data)
-        if "visit" in val and "schedule" in val: 
-            return next((i for i, x in enumerate(opts) if "Site Visit Scheduled" in x), 0)
-        if "no-show" in val: 
-            return next((i for i, x in enumerate(opts) if "No-Show" in x), 0)
-        if "ringing" in val:
-             return next((i for i, x in enumerate(opts) if "Ringing" in x), 0)
+        if "visit" in val and "schedule" in val: return next((i for i, x in enumerate(opts) if "Site Visit Scheduled" in x), 0)
+        if "no-show" in val: return next((i for i, x in enumerate(opts) if "No-Show" in x), 0)
+        if "ringing" in val: return next((i for i, x in enumerate(opts) if "Ringing" in x), 0)
         return 0
 
     new_status = st.selectbox("Status (Kya hua?)", PIPELINE_OPTS, index=get_index(status, PIPELINE_OPTS))
@@ -263,7 +272,6 @@ def open_lead_modal(row_dict, users_df):
     
     today = get_ist_date()
     col_d1, col_d2 = st.columns([2, 1])
-    # HINGLISH DATE OPTIONS
     date_opt = col_d1.radio("Follow-up Kab?", ["Koi Nahi", "Kal (Tom)", "3 Din", "Custom"], horizontal=True, label_visibility="collapsed")
     
     final_date = None
