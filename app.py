@@ -20,28 +20,45 @@ except ImportError:
 # --- CONFIGURATION ---
 st.set_page_config(page_title="TerraTip CRM", layout="wide", page_icon="🏡", initial_sidebar_state="collapsed")
 
-# --- 1. GLOBAL APP CSS ---
+# --- 1. GLOBAL APP CSS (SEMANTIC VARIABLES FIX) ---
 custom_css = """
     <style>
-        /* Force Dark Mode */
+        /* Force Dark Mode Base */
         .stApp { background-color: #0e1117 !important; color: #ffffff !important; }
         header {visibility: hidden;}
         [data-testid="stSidebarCollapsedControl"] {display: none;}
         
-        /* Inputs */
+        /* 1. GLOBAL INPUT FIELD FIX 
+           Forces all text inputs to match the theme (No white text on white bg) */
         .stTextInput input, .stSelectbox div[data-baseweb="select"], .stTextArea textarea {
-            background-color: #1E1E24 !important; color: white !important; border: 1px solid #444 !important;
+            color: white !important;
+            background-color: #1E1E24 !important; /* Fixed Dark Grey */
+            border: 1px solid #444 !important;
         }
         
-        /* Modal */
+        /* 2. BUTTON FIX (The "Burger" Button Issue)
+           Removes the jarring white background from full-width buttons */
+        div.stButton > button {
+            background-color: #1E1E24;
+            color: white;
+            border: 1px solid #41444C;
+            transition: all 0.3s ease;
+        }
+        div.stButton > button:hover {
+            border-color: #FF4B4B;
+            color: #FF4B4B;
+            background-color: #25252b;
+        }
+        
+        /* Modal Fix */
         div[data-testid="stDialog"] { background-color: #1E1E24 !important; color: white !important; border: 1px solid #333; }
         
-        /* Buttons */
+        /* Action Buttons */
         .big-btn { display: block; width: 100%; padding: 12px; text-align: center; border-radius: 8px; font-weight: bold; margin-bottom: 10px; text-decoration: none; font-size: 15px; color: white !important; }
         .call-btn { background-color: #28a745; }
         .wa-btn { background-color: #25D366; }
         
-        /* Menu */
+        /* Menu Buttons */
         div[data-testid="stHorizontalBlock"] button { border-radius: 8px; font-weight: bold; border: 1px solid #444; }
         label, p, .stMarkdown { color: #eee !important; }
     </style>
