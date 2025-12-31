@@ -167,7 +167,12 @@ PROJECT_DATA = {
     "Vedic Village": "https://drive.google.com/drive/folders/1NMAyKrigCfV66k7JsLJTH6NINpeFgwcR?usp=drive_link",
     "Ramayana Enclave": "https://drive.google.com/drive/folders/1fnuXfaXEh2KmsNt8Z7d5hPrujb1Vy-U8?usp=drive_link"
 }
-OFFICE_LINK = "https://maps.google.com/?q=26.718357,80.843513"
+
+# Now supporting multiple offices
+OFFICE_DATA = {
+    "Lucknow Office": "https://maps.google.com/?q=26.718357,80.843513",
+    "Unnao Office": "https://goo.gl/maps/dZC3py4mDLFQpB6t8?g_st=aw"
+}
 
 # --- PIPELINE (HINGLISH) ---
 PIPELINE_OPTS = [
@@ -226,6 +231,9 @@ def open_lead_modal(row_dict, users_df):
     tag_col = next((k for k in row_dict.keys() if "Tag" in k or "Label" in k), None)
     curr_tag = str(row_dict.get(tag_col, '')) if tag_col else ""
     
+    # POLICY ALERT
+    st.warning("🚨 **POLICY: NO HOME PICKUP.** (Client Office aayega -> Site Jayega -> Office wapas aayega)")
+
     # 1. TOP ACTIONS: Call Button (Left) & WhatsApp Tools (Right)
     c1, c2 = st.columns([1, 1])
     with c1: 
@@ -234,21 +242,26 @@ def open_lead_modal(row_dict, users_df):
     
     with c2:
         st.write("💬 **WhatsApp Templates**")
-        # Template Selector
-        wa_opts = ["Intro / Greeting", "Office Location"] + list(PROJECT_DATA.keys())
+        # Template Selector with BOTH Offices
+        wa_opts = ["Intro / Greeting", "Follow-up (FOMO)", "Ghost / RNR (Stop Calling)"] + list(OFFICE_DATA.keys()) + list(PROJECT_DATA.keys())
         msg_choice = st.selectbox("Message Select Karo:", wa_opts, label_visibility="collapsed")
         
         # Logic to generate message
         msg_text = ""
         if msg_choice == "Intro / Greeting":
             msg_text = f"Namaste {name} ji, TerraTip se baat kar raha hu. Kya aap Lucknow/Unnao me property dekh rahe hain?"
-        elif msg_choice == "Office Location":
-            msg_text = f"Namaste {name} ji, Site visit ke liye humara office yahan hai: {OFFICE_LINK}. Aane se pehle call kar lijiyega."
+        elif msg_choice == "Follow-up (FOMO)":
+            msg_text = f"Namaste {name} ji, 'Rustle Court' me kuch plots hold par gaye hain. Manager list finalize kar rahe hain. Kya main aapka naam Visitor List me daal du Sunday ke liye? - TerraTip"
+        elif msg_choice == "Ghost / RNR (Stop Calling)":
+             msg_text = f"Namaste {name} ji, TerraTip se call kar rahe thay. Aapne interest dikhaya tha par baat nahi ho pa rahi. Hum aapki file close kar rahe hain. Agar future me interest ho toh bataiyega."
+        elif msg_choice in OFFICE_DATA:
+            link = OFFICE_DATA[msg_choice]
+            msg_text = f"Namaste {name} ji, Site visit ke liye humara {msg_choice} yahan hai: {link}. Aane se pehle call kar lijiyega. Family ke saath aayiye."
         elif msg_choice in PROJECT_DATA:
             link = PROJECT_DATA[msg_choice]
             msg_text = f"Namaste {name} ji, *{msg_choice}* project ki photos aur videos is link par hain: {link}. Batayein kab visit plan karein?"
             
-        # COPY BUTTON (st.code gives a free copy button at top right)
+        # COPY BUTTON
         st.code(msg_text, language='text')
         st.caption("👆 Upar copy button se copy karein")
 
@@ -265,6 +278,19 @@ def open_lead_modal(row_dict, users_df):
         return 0
 
     new_status = st.selectbox("Status (Kya hua?)", PIPELINE_OPTS, index=get_index(status, PIPELINE_OPTS))
+    
+    # --- SOP PROTOCOL REMINDERS (DYNAMIC) ---
+    if "Switch Off" in new_status:
+        st.info("👉 **SOP:** WhatsApp 'Intro / Greeting' bhejo aur shaam ko try karo.")
+    elif "RNR" in new_status:
+        st.error("🛑 **STOP:** Aur call mat karo. 'Ghost' message bhej kar file close karo.")
+    elif "Visit Scheduled" in new_status:
+        st.success("📍 **ACTION:** 'Office Location' bhejo. Confirm karo ki Family aa rahi hai?")
+    elif "Visit Done (Pasand nahi aaya)" in new_status:
+        st.error("🛑 **CROSS-SELL PROTOCOL:** Client ko jane mat do! Manager se milwao. Deewan/Vedic pitch karo.")
+    elif "No-Show" in new_status:
+        st.warning("⚠️ **ALERT:** Telecaller handle nahi karega. Manager ko inform karo.")
+
     new_tag = st.text_input("🏷️ Label (e.g. VIP, Hot)", value=curr_tag)
     
     if len(str(notes)) > 2: st.markdown(f"<div class='note-history'>{notes}</div>", unsafe_allow_html=True)
