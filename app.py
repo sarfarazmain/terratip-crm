@@ -9,6 +9,7 @@ import re
 import random
 import itertools
 import pytz
+import altair as alt  # Added for the Time Chart
 
 # --- IMPORT CLICK DETECTOR ---
 try:
@@ -576,18 +577,12 @@ def show_insights():
 
     st.divider()
     
-    # TABS FOR DEEP DIVE
-    # Re-ordered tabs to put "Today's Performance" first
     t0, t1, t2, t3, t4 = st.tabs(["📅 Today's Report", "📉 Rejection Analysis", "👥 Monthly Perf", "⏰ Time Strategy", "🕵️ Source"])
     
-    # TAB 0: TODAY'S ACTIVITY (The "Ops" View)
     with t0:
         st.subheader(f"Activity Report: {get_ist_date()}")
-        # Filter for Last Call == Today
         today_df = df[df['Last Call Obj'].dt.date == get_ist_date()]
-        
         if not today_df.empty and 'Assigned TC Email' in df.columns:
-            # Create a detailed pivot table for today
             daily_ops = today_df.groupby('Assigned TC Email').agg(
                 Total_Calls=('Status', 'count'),
                 Not_Connected=('Status', lambda x: x.str.contains('Ringing|Switch|RNR', case=False, na=False).sum()),
@@ -595,10 +590,8 @@ def show_insights():
                 Sales_Closed=('Status', lambda x: x.str.contains('Sale Closed', case=False, na=False).sum())
             ).reset_index()
             st.dataframe(daily_ops, use_container_width=True)
-        else:
-            st.info("No calls recorded today yet.")
+        else: st.info("No calls recorded today yet.")
 
-    # TAB 1: REJECTION ANALYSIS
     with t1:
         st.subheader("Why are people saying NO?")
         lost_leads = df[df['Status'].str.contains("Lost|Junk", case=False, na=False)]
@@ -614,7 +607,6 @@ def show_insights():
             st.bar_chart(lost_leads['Reason'].value_counts())
         else: st.info("No lost leads yet.")
 
-    # TAB 2: MONTHLY PERFORMANCE
     with t2:
         st.subheader("Monthly Efficiency")
         if 'Assigned TC Email' in df.columns:
@@ -626,19 +618,40 @@ def show_insights():
             ).reset_index()
             st.dataframe(perf, use_container_width=True)
 
-    # TAB 3: TIME ANALYSIS
     with t3:
-        st.subheader("📞 Best Time to Call")
+        st.subheader("📞 Best Time to Call (Connected Calls)")
         if 'Last Call Obj' in df.columns:
             df['Hour'] = df['Last Call Obj'].dt.hour
             connected = df[~df['Status'].str.contains("Ringing|Switch|RNR|Naya", case=False, na=False)]
-            c_counts = connected['Hour'].value_counts().sort_index()
-            if not c_counts.empty:
-                st.area_chart(c_counts, color="#28a745")
-                st.caption("Peaks show when clients pick up the most.")
-            else: st.info("Not enough data.")
+            
+            if not connected.empty:
+                hourly_data = connected['Hour'].value_counts().reset_index()
+                hourly_data.columns = ['Hour', 'Count']
+                
+                # Format to "9 AM", "10 AM" and ensure numeric sort
+                hourly_data['Label'] = hourly_data['Hour'].apply(lambda x: f"{x % 12 or 12} {'AM' if x < 12 else 'PM'}")
+                hourly_data = hourly_data.sort_values('Hour')
+                
+                chart = alt.Chart(hourly_data).mark_area(
+                    line={'color':'#28a745'},
+                    color=alt.Gradient(
+                        gradient='linear',
+                        stops=[alt.GradientStop(color='#28a745', offset=0),
+                               alt.GradientStop(color='rgba(255,255,255,0)', offset=1)],
+                        x1=1, x2=1, y1=1, y2=0
+                    )
+                ).encode(
+                    # ALTAIR TRICK: Sort by the underlying 'Hour' integer, display 'Label' string
+                    x=alt.X('Label', sort=hourly_data['Label'].tolist(), title="Hour"),
+                    y=alt.Y('Count', title="Pickups"),
+                    tooltip=['Label', 'Count']
+                ).properties(height=350)
+                
+                st.altair_chart(chart, use_container_width=True)
+                st.caption("Graph shows actual pickups. Schedule calls during peaks.")
+            else:
+                st.info("Not enough connected call data yet.")
 
-    # TAB 4: SOURCE ANALYSIS
     with t4:
         st.subheader("Source Performance")
         src_perf = df.groupby('Source').agg(
