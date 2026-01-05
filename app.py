@@ -219,8 +219,6 @@ def open_main_menu():
             if st.form_submit_button("Save"):
                 try:
                     ts = get_ist_time(); new_id = generate_lead_id()
-                    # Creating row based on your headers
-                    # Lead ID, Timestamp, Client Name, Phone, Source, Agent Name, Assigned TC Email, Status, Last Call Date, Visit Date, Loss Reason, Notes, Next Action Date, WhatsApp Action, Next Follow-up Date, Call Count, Tags
                     row = [new_id, ts, name, phone, src, agent_name, st.session_state['username'], "Naya Lead", "", "", "", notes, "", "", "", "", ""]
                     leads_sheet.append_row(row); st.success("Added!"); time.sleep(1); st.rerun()
                 except Exception as e: st.error(str(e))
@@ -275,7 +273,6 @@ def open_lead_modal(row_dict, users_df):
 
     new_status = st.selectbox("Status (Kya hua?)", PIPELINE_OPTS, index=get_index(status, PIPELINE_OPTS))
     
-    # DYNAMIC ALERTS
     if "Switch Off" in new_status: st.info("👉 **SOP:** WhatsApp 'Intro / Greeting' bhejo.")
     elif "RNR" in new_status: st.error("🛑 **STOP:** Aur call mat karo. 'Ghost' message bhejo.")
     elif "Visit Scheduled" in new_status: st.success("📍 **ACTION:** 'Office Location' bhejo.")
@@ -526,7 +523,7 @@ def show_crm(users_df, search_q):
     with t3: render_tab_content(df[recycle & ~dead], "Recycle", "rec")
     with t4: render_tab_content(df[dead], "History", "hist")
 
-# --- ADVANCED ANALYTICS (BRUTAL EDITION) ---
+# --- ADVANCED ANALYTICS ---
 def process_analytics_data(df):
     df['Last Call Obj'] = pd.to_datetime(df['Last Call Date'], format="%Y-%m-%d %H:%M", errors='coerce')
     df['Created Obj'] = pd.to_datetime(df['Timestamp'], format="%Y-%m-%d %H:%M", errors='coerce')
@@ -579,8 +576,29 @@ def show_insights():
 
     st.divider()
     
-    t1, t2, t3, t4 = st.tabs(["📉 Rejection Analysis", "👥 Agent Perf", "⏰ Time Strategy", "🕵️ Source"])
+    # TABS FOR DEEP DIVE
+    # Re-ordered tabs to put "Today's Performance" first
+    t0, t1, t2, t3, t4 = st.tabs(["📅 Today's Report", "📉 Rejection Analysis", "👥 Monthly Perf", "⏰ Time Strategy", "🕵️ Source"])
     
+    # TAB 0: TODAY'S ACTIVITY (The "Ops" View)
+    with t0:
+        st.subheader(f"Activity Report: {get_ist_date()}")
+        # Filter for Last Call == Today
+        today_df = df[df['Last Call Obj'].dt.date == get_ist_date()]
+        
+        if not today_df.empty and 'Assigned TC Email' in df.columns:
+            # Create a detailed pivot table for today
+            daily_ops = today_df.groupby('Assigned TC Email').agg(
+                Total_Calls=('Status', 'count'),
+                Not_Connected=('Status', lambda x: x.str.contains('Ringing|Switch|RNR', case=False, na=False).sum()),
+                Visits_Scheduled=('Status', lambda x: x.str.contains('Visit Scheduled', case=False, na=False).sum()),
+                Sales_Closed=('Status', lambda x: x.str.contains('Sale Closed', case=False, na=False).sum())
+            ).reset_index()
+            st.dataframe(daily_ops, use_container_width=True)
+        else:
+            st.info("No calls recorded today yet.")
+
+    # TAB 1: REJECTION ANALYSIS
     with t1:
         st.subheader("Why are people saying NO?")
         lost_leads = df[df['Status'].str.contains("Lost|Junk", case=False, na=False)]
@@ -596,16 +614,19 @@ def show_insights():
             st.bar_chart(lost_leads['Reason'].value_counts())
         else: st.info("No lost leads yet.")
 
+    # TAB 2: MONTHLY PERFORMANCE
     with t2:
-        st.subheader("👨‍💼 Telecaller Efficiency")
+        st.subheader("Monthly Efficiency")
         if 'Assigned TC Email' in df.columns:
-            perf = df.groupby(['Assigned TC Email']).agg(
-                Total_Leads=('Phone', 'count'),
+            df['Month'] = df['Last Call Obj'].dt.strftime('%Y-%m')
+            perf = df.groupby(['Assigned TC Email', 'Month']).agg(
+                Calls=('Last Call Date', 'count'),
                 Visits=('Status', lambda x: x.str.contains('Visit').sum()),
                 Sales=('Status', lambda x: x.str.contains('Sale Closed').sum())
             ).reset_index()
             st.dataframe(perf, use_container_width=True)
 
+    # TAB 3: TIME ANALYSIS
     with t3:
         st.subheader("📞 Best Time to Call")
         if 'Last Call Obj' in df.columns:
@@ -617,6 +638,7 @@ def show_insights():
                 st.caption("Peaks show when clients pick up the most.")
             else: st.info("Not enough data.")
 
+    # TAB 4: SOURCE ANALYSIS
     with t4:
         st.subheader("Source Performance")
         src_perf = df.groupby('Source').agg(
@@ -626,6 +648,7 @@ def show_insights():
         src_perf['Conv %'] = (src_perf['Sales'] / src_perf['Total'] * 100).round(1)
         st.dataframe(src_perf, use_container_width=True)
         
+        st.divider()
         st.subheader("External Agent Stats")
         agents = df[df['Source'] == 'Agent']
         if not agents.empty and 'Agent Name' in df.columns:
