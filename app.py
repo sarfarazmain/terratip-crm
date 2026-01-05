@@ -174,9 +174,11 @@ PROJECT_DATA = {
     "Vedic Village": "https://drive.google.com/drive/folders/1NMAyKrigCfV66k7JsLJTH6NINpeFgwcR?usp=drive_link",
     "Ramayana Enclave": "https://drive.google.com/drive/folders/1fnuXfaXEh2KmsNt8Z7d5hPrujb1Vy-U8?usp=drive_link"
 }
+
+# --- UPDATED OFFICE DATA ---
 OFFICE_DATA = {
-    "Lucknow Office": "https://maps.google.com/?q=26.718357,80.843513",
-    "Unnao Office": "https://goo.gl/maps/dZC3py4mDLFQpB6t8?g_st=aw"
+    "Lucknow Office Location": "https://maps.google.com/?q=26.718357,80.843513",
+    "Unnao Office Location": "https://maps.google.com/?q=26.554270,80.505913"
 }
 
 # --- PIPELINE (HINGLISH) ---
@@ -244,7 +246,8 @@ def open_lead_modal(row_dict, users_df):
     
     with c2:
         st.write("💬 **WhatsApp Templates**")
-        wa_opts = ["Intro / Greeting", "Follow-up (FOMO)", "Ghost / RNR", "Office Location"] + list(PROJECT_DATA.keys())
+        # Added OFFICE_DATA keys to the list
+        wa_opts = ["Intro / Greeting", "Follow-up (FOMO)", "Ghost / RNR"] + list(OFFICE_DATA.keys()) + list(PROJECT_DATA.keys())
         msg_choice = st.selectbox("Message Select Karo:", wa_opts, label_visibility="collapsed")
         
         msg_text = ""
@@ -254,9 +257,12 @@ def open_lead_modal(row_dict, users_df):
             msg_text = f"Namaste {name} ji, 'Rustle Court' me kuch plots hold par gaye hain. Manager list finalize kar rahe hain. Kya main aapka naam Visitor List me daal du Sunday ke liye? - TerraTip"
         elif msg_choice == "Ghost / RNR":
              msg_text = f"Namaste {name} ji, TerraTip se call kar rahe thay. Aapne interest dikhaya tha par baat nahi ho pa rahi. Hum aapki file close kar rahe hain. Agar future me interest ho toh bataiyega."
-        elif msg_choice == "Office Location":
-             link = OFFICE_DATA["Unnao Office"]
-             msg_text = f"Namaste {name} ji, Site visit ke liye humara office yahan hai: {link}. Aane se pehle call kar lijiyega."
+        # Logic for Office Locations
+        elif msg_choice in OFFICE_DATA:
+             link = OFFICE_DATA[msg_choice]
+             # Extract simple name (e.g. "Lucknow Office Location" -> "Lucknow Office")
+             office_name = msg_choice.replace(" Location", "") 
+             msg_text = f"Namaste {name} ji, Site visit ke liye humara {office_name} yahan hai: {link}. Aane se pehle call kar lijiyega."
         elif msg_choice in PROJECT_DATA:
             link = PROJECT_DATA[msg_choice]
             msg_text = f"Namaste {name} ji, *{msg_choice}* project ki photos aur videos is link par hain: {link}. Batayein kab visit plan karein?"
@@ -516,8 +522,8 @@ def show_crm(users_df, search_q):
                 html = generate_cards_html(dframe, ctx)
                 clicked = click_detector(html, key=f"click_{key_prefix}")
                 if clicked:
-                    r = df[df['Phone'].astype(str).str.replace(r'\D','',regex=True) == clicked]
-                    if not r.empty: open_lead_modal(r.iloc[0].to_dict(), users_df)
+                    r = df[df['Phone'].astype(str).str.replace(r'\D','',regex=True) == clicked].iloc[0]
+                    open_lead_modal(r.to_dict(), users_df)
 
     with t1: render_tab_content(df[action_cond & ~dead & ~recycle], "Action", "act")
     with t2: render_tab_content(df[future_cond & ~dead & ~recycle], "Future", "fut")
