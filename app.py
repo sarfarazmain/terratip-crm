@@ -167,12 +167,7 @@ PROJECT_DATA = {
     "Vedic Village": "https://drive.google.com/drive/folders/1NMAyKrigCfV66k7JsLJTH6NINpeFgwcR?usp=drive_link",
     "Ramayana Enclave": "https://drive.google.com/drive/folders/1fnuXfaXEh2KmsNt8Z7d5hPrujb1Vy-U8?usp=drive_link"
 }
-
-# Now supporting multiple offices
-OFFICE_DATA = {
-    "Lucknow Office": "https://maps.google.com/?q=26.718357,80.843513",
-    "Unnao Office": "https://goo.gl/maps/dZC3py4mDLFQpB6t8?g_st=aw"
-}
+OFFICE_LINK = "https://maps.google.com/?q=26.718357,80.843513"
 
 # --- PIPELINE (HINGLISH) ---
 PIPELINE_OPTS = [
@@ -242,8 +237,8 @@ def open_lead_modal(row_dict, users_df):
     
     with c2:
         st.write("💬 **WhatsApp Templates**")
-        # Template Selector with BOTH Offices
-        wa_opts = ["Intro / Greeting", "Follow-up (FOMO)", "Ghost / RNR (Stop Calling)"] + list(OFFICE_DATA.keys()) + list(PROJECT_DATA.keys())
+        # Template Selector
+        wa_opts = ["Intro / Greeting", "Follow-up (FOMO)", "Office Location", "Ghost / RNR (Stop Calling)"] + list(PROJECT_DATA.keys())
         msg_choice = st.selectbox("Message Select Karo:", wa_opts, label_visibility="collapsed")
         
         # Logic to generate message
@@ -252,11 +247,10 @@ def open_lead_modal(row_dict, users_df):
             msg_text = f"Namaste {name} ji, TerraTip se baat kar raha hu. Kya aap Lucknow/Unnao me property dekh rahe hain?"
         elif msg_choice == "Follow-up (FOMO)":
             msg_text = f"Namaste {name} ji, 'Rustle Court' me kuch plots hold par gaye hain. Manager list finalize kar rahe hain. Kya main aapka naam Visitor List me daal du Sunday ke liye? - TerraTip"
+        elif msg_choice == "Office Location":
+            msg_text = f"Namaste {name} ji, Site visit ke liye humara office yahan hai: {OFFICE_LINK}. Aane se pehle call kar lijiyega. Family ke saath aayiye."
         elif msg_choice == "Ghost / RNR (Stop Calling)":
              msg_text = f"Namaste {name} ji, TerraTip se call kar rahe thay. Aapne interest dikhaya tha par baat nahi ho pa rahi. Hum aapki file close kar rahe hain. Agar future me interest ho toh bataiyega."
-        elif msg_choice in OFFICE_DATA:
-            link = OFFICE_DATA[msg_choice]
-            msg_text = f"Namaste {name} ji, Site visit ke liye humara {msg_choice} yahan hai: {link}. Aane se pehle call kar lijiyega. Family ke saath aayiye."
         elif msg_choice in PROJECT_DATA:
             link = PROJECT_DATA[msg_choice]
             msg_text = f"Namaste {name} ji, *{msg_choice}* project ki photos aur videos is link par hain: {link}. Batayein kab visit plan karein?"
@@ -373,6 +367,7 @@ CARD_STYLE = """
     
     .pill-badge { font-size: 0.75rem; font-weight: 600; text-transform: uppercase; padding: 3px 8px; border-radius: 6px; background-color: rgba(255, 255, 255, 0.1); border: 1px solid rgba(128, 128, 128, 0.3); color: var(--text-color); white-space: nowrap; }
     .source-badge { background-color: rgba(0, 123, 255, 0.1); color: #4287f5; border: none; }
+    .assign-badge { background-color: #333; color: #fff; font-size: 0.7rem; padding: 2px 6px; border-radius: 4px; margin-left: 6px; border: 1px solid #555; }
 
     .card-body { margin: 12px 0; display: flex; align-items: center; gap: 10px; }
     .status-text { font-size: 1rem; color: var(--text-color); font-weight: 500; }
@@ -402,6 +397,11 @@ def generate_cards_html(dframe, context):
         tag_col = next((c for c in row.index if "Tag" in c or "Label" in c), None)
         tag_val = str(row.get(tag_col, '')).strip() if tag_col else ""
         
+        # New Assign Logic
+        assign_col = next((c for c in row.index if "Assign" in c), None)
+        assign_val = str(row.get(assign_col, '')).strip() if assign_col else ""
+        assign_html = f"<span class='assign-badge'>👤 {assign_val}</span>" if assign_val else ""
+
         f_val = str(row.get(next((c for c in row.index if "Follow" in c), 'Follow'), '')).strip()
         t_val = str(row.get(next((c for c in row.index if "Last Call" in c), 'Last'), '')).strip()
         last_update = format_datetime(t_val)
@@ -442,7 +442,7 @@ def generate_cards_html(dframe, context):
                 <div class='status-strip {strip_class}'></div>
                 <div class='card-top'>
                     <div>
-                        <div class='card-name'>{name}</div>
+                        <div class='card-name'>{name} {assign_html}</div>
                         <div class='card-subtext'>
                             {src_html} <span>📞 {display_phone}</span>
                         </div>
@@ -572,6 +572,56 @@ def show_crm(users_df, search_q):
     with t3: render_tab_content(df[recycle & ~dead], "Recycle", "rec")
     with t4: render_tab_content(df[dead], "History", "hist")
 
+# --- INSIGHTS PANEL (NEW) ---
+def show_insights():
+    try: data = leads_sheet.get_all_records(); df = pd.DataFrame(data)
+    except: st.error("No Data"); return
+    
+    st.title("📊 Aaj ki Report")
+    today_str = get_ist_date().strftime("%Y-%m-%d")
+    
+    # Filter: Activities updated TODAY (Based on 'Last Call' timestamp)
+    # Note: 'Last Call' format is "%Y-%m-%d %H:%M"
+    df['Last Call Date'] = pd.to_datetime(df['Last Call'], format="%Y-%m-%d %H:%M", errors='coerce').dt.date
+    today_activity = df[df['Last Call Date'] == get_ist_date()]
+    
+    c1, c2, c3 = st.columns(3)
+    c1.metric("Total Leads", len(df))
+    c2.metric("Calls Today (Activity)", len(today_activity))
+    
+    visits = len(df[df['Status'].str.contains("Visit Scheduled", case=False, na=False)])
+    c3.metric("Visits Scheduled (Total)", visits)
+    
+    st.divider()
+    
+    col_chart, col_breakdown = st.columns([2, 1])
+    
+    with col_chart:
+        st.subheader("🏆 Leaderboard (Calls Today)")
+        if not today_activity.empty:
+            # Group by Assignee
+            agent_counts = today_activity['Assign'].value_counts().reset_index()
+            agent_counts.columns = ['Agent', 'Calls Made']
+            st.dataframe(agent_counts, use_container_width=True, hide_index=True)
+        else:
+            st.info("Aaj koi call nahi hui.")
+
+    with col_breakdown:
+        st.subheader("📞 Call Outcome")
+        if not today_activity.empty:
+            # Categorize Status
+            def categorize(s):
+                s = str(s).lower()
+                if "ringing" in s or "switch" in s or "rnr" in s: return "Not Connected ❌"
+                if "naya" in s: return "No Action ⚪"
+                return "Connected ✅"
+            
+            today_activity['Outcome'] = today_activity['Status'].apply(categorize)
+            outcome_counts = today_activity['Outcome'].value_counts()
+            st.bar_chart(outcome_counts, color="#FF4B4B")
+        else:
+            st.caption("No data")
+
 # --- ADMIN PANEL ---
 def show_admin(users_df):
     c1, c2 = st.columns([1,2])
@@ -632,7 +682,7 @@ if st.session_state['current_page'] == "CRM":
     q = search_query if 'search_query' in locals() and search_query else None
     show_crm(users_df, q)
 elif st.session_state['current_page'] == "Insights":
-    st.title("📊 Stats"); st.info("Jaldi Aayega")
+    show_insights()
 elif st.session_state['current_page'] == "Admin":
     if st.session_state['role'] == "Manager": show_admin(users_df)
     else: st.error("⛔ Access Denied")
