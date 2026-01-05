@@ -66,6 +66,9 @@ custom_css = """
         
         /* Status Badges */
         .assign-badge { background-color: #333; color: #fff; font-size: 0.7rem; padding: 2px 6px; border-radius: 4px; margin-left: 6px; border: 1px solid #555; }
+        
+        /* Note History */
+        .note-history { font-size: 0.85rem; opacity: 0.8; max-height: 100px; overflow-y: auto; border-left: 2px solid #555; padding-left: 8px; margin-bottom: 8px; white-space: pre-wrap; }
     </style>
 """
 st.markdown(custom_css, unsafe_allow_html=True)
@@ -204,34 +207,33 @@ def open_main_menu():
     st.divider()
     c1, c2, c3 = st.columns(3)
     if c1.button("🏠 CRM", use_container_width=True): st.session_state['current_page'] = "CRM"; st.rerun()
-    if c2.button("📊 Stats", use_container_width=True): st.session_state['current_page'] = "Insights"; st.rerun()
+    if c2.button("📊 Analytics", use_container_width=True): st.session_state['current_page'] = "Insights"; st.rerun()
     if c3.button("⚙️ Admin", use_container_width=True): st.session_state['current_page'] = "Admin"; st.rerun()
     st.divider()
     with st.expander("➕ Naya Lead Jodo", expanded=False):
         with st.form("menu_add"):
             name = st.text_input("Naam"); phone = st.text_input("Mobile Number")
             src = st.selectbox("Source", ["Meta Ads", "Canopy", "Agent", "Referral", "Cold Call"])
+            agent_name = st.text_input("Agent Name (Agar Source Agent hai)")
             notes = st.text_area("Note")
             if st.form_submit_button("Save"):
                 try:
                     ts = get_ist_time(); new_id = generate_lead_id()
                     # Creating row based on your headers
                     # Lead ID, Timestamp, Client Name, Phone, Source, Agent Name, Assigned TC Email, Status, Last Call Date, Visit Date, Loss Reason, Notes, Next Action Date, WhatsApp Action, Next Follow-up Date, Call Count, Tags
-                    row = [new_id, ts, name, phone, src, "", st.session_state['username'], "Naya Lead", "", "", "", notes, "", "", "", "", ""]
+                    row = [new_id, ts, name, phone, src, agent_name, st.session_state['username'], "Naya Lead", "", "", "", notes, "", "", "", "", ""]
                     leads_sheet.append_row(row); st.success("Added!"); time.sleep(1); st.rerun()
                 except Exception as e: st.error(str(e))
     st.divider()
     if st.button("🚪 Logout", use_container_width=True): st.session_state['logged_in'] = False; st.rerun()
 
-# --- LEAD MODAL (FINAL) ---
+# --- LEAD MODAL ---
 @st.dialog("📋 Lead Details")
 def open_lead_modal(row_dict, users_df):
     phone = str(row_dict.get('Phone', '')).replace(',', '').replace('.', '')
     name = row_dict.get('Client Name', 'Unknown')
     status = row_dict.get('Status', 'Naya Lead')
     notes = row_dict.get('Notes', '')
-    
-    # Mapped to your specific header 'Tags'
     curr_tag = str(row_dict.get('Tags', '')) 
     
     st.warning("🚨 **POLICY: NO HOME PICKUP.** (Client Office aayega -> Site Jayega -> Office wapas aayega)")
@@ -254,7 +256,6 @@ def open_lead_modal(row_dict, users_df):
         elif msg_choice == "Ghost / RNR":
              msg_text = f"Namaste {name} ji, TerraTip se call kar rahe thay. Aapne interest dikhaya tha par baat nahi ho pa rahi. Hum aapki file close kar rahe hain. Agar future me interest ho toh bataiyega."
         elif msg_choice == "Office Location":
-             # Default to Unnao or create sub-menu if needed
              link = OFFICE_DATA["Unnao Office"]
              msg_text = f"Namaste {name} ji, Site visit ke liye humara office yahan hai: {link}. Aane se pehle call kar lijiyega."
         elif msg_choice in PROJECT_DATA:
@@ -270,13 +271,11 @@ def open_lead_modal(row_dict, users_df):
         val = str(val).lower().strip()
         for i, x in enumerate(opts):
             if x.lower() == val: return i
-        if "visit" in val and "schedule" in val: return next((i for i, x in enumerate(opts) if "Site Visit Scheduled" in x), 0)
-        if "no-show" in val: return next((i for i, x in enumerate(opts) if "No-Show" in x), 0)
-        if "ringing" in val: return next((i for i, x in enumerate(opts) if "Ringing" in x), 0)
         return 0
 
     new_status = st.selectbox("Status (Kya hua?)", PIPELINE_OPTS, index=get_index(status, PIPELINE_OPTS))
     
+    # DYNAMIC ALERTS
     if "Switch Off" in new_status: st.info("👉 **SOP:** WhatsApp 'Intro / Greeting' bhejo.")
     elif "RNR" in new_status: st.error("🛑 **STOP:** Aur call mat karo. 'Ghost' message bhejo.")
     elif "Visit Scheduled" in new_status: st.success("📍 **ACTION:** 'Office Location' bhejo.")
@@ -298,7 +297,6 @@ def open_lead_modal(row_dict, users_df):
     
     new_assign = None
     if st.session_state['role'] == "Manager":
-        # Using 'Assigned TC Email' as the assignment column
         try: u_idx = users_df['Username'].tolist().index(row_dict.get('Assigned TC Email', ''))
         except: u_idx = 0
         new_assign = st.selectbox("Assign Kisko?", users_df['Username'].tolist(), index=u_idx)
@@ -309,46 +307,29 @@ def open_lead_modal(row_dict, users_df):
             if not cell: st.error("Not found")
             else:
                 r = cell.row; h = leads_sheet.row_values(1)
-                
-                # HELPER: Find column index by name (case insensitive)
                 def get_col_idx(col_name):
                     return next((i+1 for i,v in enumerate(h) if col_name.lower() == v.lower().strip()), None)
 
                 updates = []
-                
-                # 1. Update Status
                 s_idx = get_col_idx("Status")
                 if s_idx: updates.append({'range': gspread.utils.rowcol_to_a1(r, s_idx), 'values': [[new_status]]})
-                
-                # 2. Update Tags
                 tag_idx = get_col_idx("Tags")
                 if tag_idx: updates.append({'range': gspread.utils.rowcol_to_a1(r, tag_idx), 'values': [[new_tag]]})
-                
-                # 3. Update Notes
                 if new_note:
                     full_note = f"[{datetime.now(IST).strftime('%d-%b')}] {new_note}\n{notes}"
                     n_idx = get_col_idx("Notes")
                     if n_idx: updates.append({'range': gspread.utils.rowcol_to_a1(r, n_idx), 'values': [[full_note]]})
-                
-                # 4. Update Follow Up (Next Follow-up Date)
                 if final_date:
                     f_idx = get_col_idx("Next Follow-up Date")
                     if f_idx: updates.append({'range': gspread.utils.rowcol_to_a1(r, f_idx), 'values': [[str(final_date)]]})
-                
-                # 5. Update Last Call Date
                 lc_idx = get_col_idx("Last Call Date")
                 if lc_idx: updates.append({'range': gspread.utils.rowcol_to_a1(r, lc_idx), 'values': [[get_ist_time()]]})
-                
-                # 6. Update Assignment (Assigned TC Email)
                 if new_assign:
                     a_idx = get_col_idx("Assigned TC Email")
                     if a_idx: updates.append({'range': gspread.utils.rowcol_to_a1(r, a_idx), 'values': [[new_assign]]})
                 
-                if updates:
-                    leads_sheet.batch_update(updates)
-                    st.rerun()
-                else:
-                    st.error("Columns nahi mile. Headers check karein.")
+                if updates: leads_sheet.batch_update(updates); st.rerun()
+                else: st.error("Columns nahi mile. Headers check karein.")
         except Exception as e: st.error(str(e))
 
 # --- 2. CARD DESIGN ---
@@ -356,52 +337,21 @@ CARD_STYLE = """
 <style>
     body { margin: 0; padding: 0; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }
     a.card-link { text-decoration: none; color: inherit; display: block; }
-    
-    .lead-card {
-        background-color: var(--secondary-background-color);
-        border: 1px solid rgba(128, 128, 128, 0.2);
-        border-radius: 12px;
-        padding: 16px;
-        padding-left: 24px;
-        margin-bottom: 14px;
-        box-shadow: 0 2px 4px rgba(0,0,0,0.05);
-        position: relative;
-        transition: transform 0.2s, box-shadow 0.2s;
-        overflow: hidden;
-    }
-    .lead-card:hover {
-        transform: translateY(-3px);
-        box-shadow: 0 6px 12px rgba(0,0,0,0.15);
-        border-color: rgba(128, 128, 128, 0.4);
-    }
-    
-    .status-strip {
-        position: absolute; left: 0; top: 0; bottom: 0; width: 6px;
-        border-top-left-radius: 12px; border-bottom-left-radius: 12px;
-    }
-    .strip-red { background-color: #FF5252; }
-    .strip-orange { background-color: #FFA726; }
-    .strip-green { background-color: #66BB6A; }
-    .strip-grey { background-color: #9E9E9E; }
-
+    .lead-card { background-color: var(--secondary-background-color); border: 1px solid rgba(128, 128, 128, 0.2); border-radius: 12px; padding: 16px; padding-left: 24px; margin-bottom: 14px; box-shadow: 0 2px 4px rgba(0,0,0,0.05); position: relative; transition: transform 0.2s, box-shadow 0.2s; overflow: hidden; }
+    .lead-card:hover { transform: translateY(-3px); box-shadow: 0 6px 12px rgba(0,0,0,0.15); border-color: rgba(128, 128, 128, 0.4); }
+    .status-strip { position: absolute; left: 0; top: 0; bottom: 0; width: 6px; border-top-left-radius: 12px; border-bottom-left-radius: 12px; }
+    .strip-red { background-color: #FF5252; } .strip-orange { background-color: #FFA726; } .strip-green { background-color: #66BB6A; } .strip-grey { background-color: #9E9E9E; }
     .card-top { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 6px; }
     .card-name { font-size: 1.15rem; font-weight: 700; color: var(--text-color); line-height: 1.2; }
     .card-subtext { font-size: 0.85rem; color: var(--text-color); opacity: 0.7; margin-top: 2px; display: flex; align-items: center; gap: 6px; }
-    
     .pill-badge { font-size: 0.75rem; font-weight: 600; text-transform: uppercase; padding: 3px 8px; border-radius: 6px; background-color: rgba(255, 255, 255, 0.1); border: 1px solid rgba(128, 128, 128, 0.3); color: var(--text-color); white-space: nowrap; }
     .source-badge { background-color: rgba(0, 123, 255, 0.1); color: #4287f5; border: none; }
     .assign-badge { background-color: #333; color: #fff; font-size: 0.7rem; padding: 2px 6px; border-radius: 4px; margin-left: 6px; border: 1px solid #555; }
-
     .card-body { margin: 12px 0; display: flex; align-items: center; gap: 10px; }
     .status-text { font-size: 1rem; color: var(--text-color); font-weight: 500; }
-
     .card-footer { display: flex; justify-content: space-between; align-items: center; border-top: 1px solid rgba(128, 128, 128, 0.2); padding-top: 10px; font-size: 0.8rem; color: var(--text-color); opacity: 0.8; }
     .footer-highlight { font-weight: 600; opacity: 1; display: flex; align-items: center; gap: 5px; }
-    
-    .txt-red { color: #FF5252; }
-    .txt-green { color: #66BB6A; }
-    .txt-orange { color: #FFA726; }
-    .txt-blue { color: #42A5F5; }
+    .txt-red { color: #FF5252; } .txt-green { color: #66BB6A; } .txt-orange { color: #FFA726; } .txt-blue { color: #42A5F5; }
 </style>
 """
 
@@ -415,18 +365,10 @@ def generate_cards_html(dframe, context):
         name = str(row.get('Client Name', 'Unknown'))
         raw_status = str(row.get('Status', ''))
         source = str(row.get('Source', '')).strip() 
-        
-        # Mapped to 'Tags'
         tag_val = str(row.get('Tags', '')).strip()
-        
-        # Mapped to 'Assigned TC Email'
         assign_val = str(row.get('Assigned TC Email', '')).strip()
         assign_html = f"<span class='assign-badge'>👤 {assign_val}</span>" if assign_val else ""
-
-        # Mapped to 'Next Follow-up Date'
         f_val = str(row.get('Next Follow-up Date', '')).strip()
-        
-        # Mapped to 'Last Call Date'
         t_val = str(row.get('Last Call Date', '')).strip()
         last_update = format_datetime(t_val)
         
@@ -441,22 +383,18 @@ def generate_cards_html(dframe, context):
                 elif d == today: footer_html = "<span class='footer-highlight txt-orange'>🔥 Aaj Karo</span>"
                 else: footer_html = "<span class='footer-highlight txt-green'>⚡ Action</span>"
             except: footer_html = "<span class='footer-highlight txt-green'>⚡ Action</span>"
-            
         elif context == "Future":
             strip_class = "strip-green"
             footer_html = f"<span class='footer-highlight txt-blue'>📅 {format_date_only(f_val)}</span>"
-            
         elif context == "Recycle":
             strip_class = "strip-orange"
             footer_html = "<span class='footer-highlight'>♻️ Recycle</span>"
-            
         else: 
             strip_class = "strip-grey"
             footer_html = "<span>🔒 Closed</span>"
 
         icon = get_status_icon(raw_status)
         display_status = "Lost" if "Lost" in raw_status else raw_status.split(" /")[0]
-        
         tag_html = f"<span class='pill-badge'>{tag_val}</span>" if tag_val and tag_val.lower() != "nan" else ""
         src_html = f"<span class='pill-badge source-badge'>{source}</span>" if source and source.lower() != "nan" else ""
 
@@ -467,19 +405,15 @@ def generate_cards_html(dframe, context):
                 <div class='card-top'>
                     <div>
                         <div class='card-name'>{name} {assign_html}</div>
-                        <div class='card-subtext'>
-                            {src_html} <span>📞 {display_phone}</span>
-                        </div>
+                        <div class='card-subtext'>{src_html} <span>📞 {display_phone}</span></div>
                     </div>
                     {tag_html}
                 </div>
                 <div class='card-body'>
-                    <span style='font-size:1.4rem;'>{icon}</span>
-                    <span class='status-text'>{display_status}</span>
+                    <span style='font-size:1.4rem;'>{icon}</span><span class='status-text'>{display_status}</span>
                 </div>
                 <div class='card-footer'>
-                    {footer_html}
-                    <span>🕒 {last_update}</span>
+                    {footer_html}<span>🕒 {last_update}</span>
                 </div>
             </div>
         </a>
@@ -493,9 +427,7 @@ def show_crm(users_df, search_q):
     try: data = leads_sheet.get_all_records(); df = pd.DataFrame(data)
     except: return
     
-    # FILTER FOR TELECALLER
     if st.session_state['role'] == "Telecaller":
-        # Looking for 'Assigned TC Email' column
         if 'Assigned TC Email' in df.columns:
             df = df[(df['Assigned TC Email'] == st.session_state['username']) | (df['Assigned TC Email'] == st.session_state['name'])]
 
@@ -510,7 +442,6 @@ def show_crm(users_df, search_q):
 
     today = get_ist_date()
     
-    # Bulk Mode
     c_search, c_toggle = st.columns([0.65, 0.35])
     with c_search: pass
     is_bulk = False
@@ -527,7 +458,6 @@ def show_crm(users_df, search_q):
                 if phones:
                     try:
                         h = leads_sheet.row_values(1)
-                        # Find 'Assigned TC Email' column
                         col_idx = next((i+1 for i,v in enumerate(h) if "Assigned TC Email" == v.strip()), None)
                         if col_idx:
                             all_v = leads_sheet.get_all_values(); updates = []
@@ -543,7 +473,6 @@ def show_crm(users_df, search_q):
                 if phones and label_text:
                     try:
                         h = leads_sheet.row_values(1)
-                        # Find 'Tags' column
                         col_idx = next((i+1 for i,v in enumerate(h) if "Tags" == v.strip()), None)
                         if col_idx:
                             all_v = leads_sheet.get_all_values(); updates = []
@@ -567,7 +496,6 @@ def show_crm(users_df, search_q):
         try: return datetime.strptime(str(v).strip(), "%Y-%m-%d").date()
         except: return None
     
-    # Map to 'Next Follow-up Date'
     df['PD'] = df['Next Follow-up Date'].apply(parse_date) if 'Next Follow-up Date' in df.columns else None
     
     dead = df['Status'].str.contains("Closed|Booked|Junk|Invalid|Agent", case=False, na=False)
@@ -575,7 +503,6 @@ def show_crm(users_df, search_q):
     action_cond = (df['PD'].notna() & (df['PD'] <= today)) | df['Status'].str.contains("Naya|New", case=False, na=False)
     future_cond = (df['PD'].notna() & (df['PD'] > today))
     
-    # HINGLISH TABS
     t1, t2, t3, t4 = st.tabs([f"🔥 Action (Aaj ka)", f"📅 Future (Aage ka)", f"♻️ Recycle", f"❌ Closed"])
     
     def render_tab_content(dframe, ctx, key_prefix):
@@ -599,109 +526,110 @@ def show_crm(users_df, search_q):
     with t3: render_tab_content(df[recycle & ~dead], "Recycle", "rec")
     with t4: render_tab_content(df[dead], "History", "hist")
 
-# --- INSIGHTS PANEL (FIXED FOR HEADERS) ---
+# --- ADVANCED ANALYTICS (BRUTAL EDITION) ---
+def process_analytics_data(df):
+    df['Last Call Obj'] = pd.to_datetime(df['Last Call Date'], format="%Y-%m-%d %H:%M", errors='coerce')
+    df['Created Obj'] = pd.to_datetime(df['Timestamp'], format="%Y-%m-%d %H:%M", errors='coerce')
+    df['Next Follow Obj'] = pd.to_datetime(df['Next Follow-up Date'], format="%Y-%m-%d", errors='coerce')
+
+    total_leads = len(df)
+    total_closed = len(df[df['Status'].str.contains("Sale Closed", case=False, na=False)])
+    
+    total_visits = len(df[df['Status'].str.contains("Visit Done|Visit Scheduled", case=False, na=False)])
+    visit_conversion = (total_closed / total_visits * 100) if total_visits > 0 else 0
+    
+    today_ts = pd.Timestamp(datetime.now().date())
+    active_mask = ~df['Status'].str.contains("Closed|Lost|Junk|Broker", case=False, na=False)
+    overdue_mask = (df['Next Follow Obj'] < today_ts)
+    leakage_count = len(df[active_mask & overdue_mask])
+
+    closed_leads = df[df['Status'].str.contains("Sale Closed", case=False, na=False)].copy()
+    avg_cycle = (closed_leads['Last Call Obj'] - closed_leads['Created Obj']).dt.days.mean() if not closed_leads.empty else 0
+        
+    return {
+        "total": total_leads,
+        "closed": total_closed,
+        "visits": total_visits,
+        "visit_conv": visit_conversion,
+        "leakage": leakage_count,
+        "cycle": avg_cycle,
+        "df": df
+    }
+
 def show_insights():
     try: 
         data = leads_sheet.get_all_records()
         df = pd.DataFrame(data)
     except: 
-        st.error("Data load failed or sheet empty."); return
+        st.error("Data load failed."); return
 
-    # COLUMNS TO LOOK FOR
-    lc_col = 'Last Call Date'
-    status_col = 'Status'
-    assign_col = 'Assigned TC Email'
+    if 'Last Call Date' not in df.columns: st.error("Header Error: 'Last Call Date' column missing."); return
 
-    # SAFETY CHECK
-    if lc_col not in df.columns:
-        st.error(f"❌ Error: Column '{lc_col}' nahi mila. Please check exact header name in Sheet."); return
+    metrics = process_analytics_data(df)
+    df = metrics["df"]
+    
+    st.title("🧠 Management Intelligence")
+    
+    k1, k2, k3, k4 = st.columns(4)
+    k1.metric("💰 Total Sales", metrics["closed"])
+    k2.metric("🚌 Total Visits", metrics["visits"])
+    k3.metric("🎯 Visit-to-Sale %", f"{metrics['visit_conv']:.1f}%")
+    k4.metric("⚠️ Missed Follow-ups", metrics["leakage"], delta_color="inverse")
+    if metrics["leakage"] > 0: st.error(f"🚨 **Action Required:** {metrics['leakage']} Leads are rotting!")
 
-    st.title("📊 Aaj ki Report")
-    
-    # FILTER TODAY
-    # Format matches what we write: "%Y-%m-%d %H:%M"
-    df['Last Call Date Obj'] = pd.to_datetime(df[lc_col], format="%Y-%m-%d %H:%M", errors='coerce').dt.date
-    today_activity = df[df['Last Call Date Obj'] == get_ist_date()]
-    
-    c1, c2, c3 = st.columns(3)
-    c1.metric("Total Leads", len(df))
-    c2.metric("Calls Today (Activity)", len(today_activity))
-    
-    visits = len(df[df[status_col].astype(str).str.contains("Visit Scheduled", case=False, na=False)])
-    c3.metric("Visits Scheduled (Total)", visits)
-    
     st.divider()
     
-    col_chart, col_breakdown = st.columns([2, 1])
+    t1, t2, t3, t4 = st.tabs(["📉 Rejection Analysis", "👥 Agent Perf", "⏰ Time Strategy", "🕵️ Source"])
     
-    with col_chart:
-        st.subheader("🏆 Leaderboard (Calls Today)")
-        if not today_activity.empty and assign_col in df.columns:
-            agent_counts = today_activity[assign_col].value_counts().reset_index()
-            agent_counts.columns = ['Agent', 'Calls Made']
-            st.dataframe(agent_counts, use_container_width=True, hide_index=True)
-        else:
-            st.info("Aaj koi call nahi hui.")
-
-    with col_breakdown:
-        st.subheader("📞 Call Outcome")
-        if not today_activity.empty:
-            def categorize(s):
+    with t1:
+        st.subheader("Why are people saying NO?")
+        lost_leads = df[df['Status'].str.contains("Lost|Junk", case=False, na=False)]
+        if not lost_leads.empty:
+            def extract_reason(s):
                 s = str(s).lower()
-                if "ringing" in s or "switch" in s or "rnr" in s: return "Not Connected ❌"
-                if "naya" in s: return "No Action ⚪"
-                return "Connected ✅"
-            
-            today_activity['Outcome'] = today_activity[status_col].apply(categorize)
-            outcome_counts = today_activity['Outcome'].value_counts()
-            st.bar_chart(outcome_counts, color="#FF4B4B")
-        else:
-            st.caption("No data")
+                if "mehenga" in s or "price" in s: return "Price High 💸"
+                if "location" in s or "door" in s: return "Location Issue 🛣️"
+                if "broker" in s or "junk" in s: return "Junk/Broker 🗑️"
+                if "rnr" in s: return "Ghosted (RNR) 👻"
+                return "Other Reason ❓"
+            lost_leads['Reason'] = lost_leads['Status'].apply(extract_reason)
+            st.bar_chart(lost_leads['Reason'].value_counts())
+        else: st.info("No lost leads yet.")
 
-# --- ADMIN PANEL ---
-def show_admin(users_df):
-    c1, c2 = st.columns([1,2])
-    with c1:
-        st.subheader("Naya User Banao")
-        with st.form("nu"):
-            u = st.text_input("Username"); p = st.text_input("Password", type="password")
-            n = st.text_input("Naam (Full Name)"); r = st.selectbox("Role", ["Telecaller", "Sales Specialist", "Manager"])
-            if st.form_submit_button("Create User"):
-                users_sheet.append_row([u, hash_pass(p), r, n]); st.success("Created!"); st.rerun()
-        st.divider()
-        st.subheader("📥 Upload CSV")
-        ag = st.multiselect("Assign To", users_df['Username'].tolist())
-        up = st.file_uploader("CSV File Chuno", type=['csv'])
-        if up and st.button("Upload"):
-            if not ag: st.error("Agent Select Karo!")
-            else:
-                try:
-                    try: df_up = pd.read_csv(up, encoding='utf-8')
-                    except: df_up = pd.read_csv(up, encoding='ISO-8859-1')
-                    cols = [c.lower() for c in df_up.columns]
-                    n_i = next((i for i, c in enumerate(cols) if "name" in c), -1)
-                    p_i = next((i for i, c in enumerate(cols) if "phone" in c or "mobile" in c), -1)
-                    if n_i == -1 or p_i == -1: st.error("Name ya Phone column nahi mila")
-                    else:
-                        nc = df_up.columns[n_i]; pc = df_up.columns[p_i]
-                        ex_phones = set(re.sub(r'\D', '', str(p))[-10:] for p in leads_sheet.col_values(4))
-                        rows = []; cyc = itertools.cycle(ag); ts = get_ist_time()
-                        for _, r in df_up.iterrows():
-                            p_clean = re.sub(r'\D', '', str(r[pc]))[-10:]
-                            if len(p_clean)==10 and p_clean not in ex_phones:
-                                # Row matching YOUR headers
-                                rows.append([generate_lead_id(), ts, r[nc], p_clean, "Upload", "", next(cyc), "Naya Lead", "", "", "", "", "", "", "", "", ""])
-                                ex_phones.add(p_clean)
-                        if rows: leads_sheet.append_rows(rows); st.success(f"Added {len(rows)} leads"); time.sleep(1); st.rerun()
-                except Exception as e: st.error(str(e))
-    with c2:
-        st.subheader("Team")
-        st.dataframe(users_df[['Name','Role']], hide_index=True)
-        opts = [x for x in users_df['Username'].unique() if x != st.session_state['username']]
-        if opts:
-            d_u = st.selectbox("Delete User", opts)
-            if st.button("❌ Delete User"):
-                cell = users_sheet.find(d_u); users_sheet.delete_rows(cell.row); st.success("Deleted"); st.rerun()
+    with t2:
+        st.subheader("👨‍💼 Telecaller Efficiency")
+        if 'Assigned TC Email' in df.columns:
+            perf = df.groupby(['Assigned TC Email']).agg(
+                Total_Leads=('Phone', 'count'),
+                Visits=('Status', lambda x: x.str.contains('Visit').sum()),
+                Sales=('Status', lambda x: x.str.contains('Sale Closed').sum())
+            ).reset_index()
+            st.dataframe(perf, use_container_width=True)
+
+    with t3:
+        st.subheader("📞 Best Time to Call")
+        if 'Last Call Obj' in df.columns:
+            df['Hour'] = df['Last Call Obj'].dt.hour
+            connected = df[~df['Status'].str.contains("Ringing|Switch|RNR|Naya", case=False, na=False)]
+            c_counts = connected['Hour'].value_counts().sort_index()
+            if not c_counts.empty:
+                st.area_chart(c_counts, color="#28a745")
+                st.caption("Peaks show when clients pick up the most.")
+            else: st.info("Not enough data.")
+
+    with t4:
+        st.subheader("Source Performance")
+        src_perf = df.groupby('Source').agg(
+            Total=('Status', 'count'),
+            Sales=('Status', lambda x: x.str.contains('Sale Closed').sum())
+        ).reset_index()
+        src_perf['Conv %'] = (src_perf['Sales'] / src_perf['Total'] * 100).round(1)
+        st.dataframe(src_perf, use_container_width=True)
+        
+        st.subheader("External Agent Stats")
+        agents = df[df['Source'] == 'Agent']
+        if not agents.empty and 'Agent Name' in df.columns:
+            st.bar_chart(agents['Agent Name'].value_counts())
 
 # --- ROUTER ---
 c_search, c_menu = st.columns([0.85, 0.15])
