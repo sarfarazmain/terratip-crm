@@ -9,7 +9,7 @@ import re
 import random
 import itertools
 import pytz
-import altair as alt  # Added for the Time Chart
+import altair as alt
 
 # --- IMPORT CLICK DETECTOR ---
 try:
@@ -174,8 +174,6 @@ PROJECT_DATA = {
     "Vedic Village": "https://drive.google.com/drive/folders/1NMAyKrigCfV66k7JsLJTH6NINpeFgwcR?usp=drive_link",
     "Ramayana Enclave": "https://drive.google.com/drive/folders/1fnuXfaXEh2KmsNt8Z7d5hPrujb1Vy-U8?usp=drive_link"
 }
-
-# --- UPDATED OFFICE DATA ---
 OFFICE_DATA = {
     "Lucknow Office Location": "https://maps.google.com/?q=26.718357,80.843513",
     "Unnao Office Location": "https://maps.google.com/?q=26.554270,80.505913"
@@ -246,7 +244,6 @@ def open_lead_modal(row_dict, users_df):
     
     with c2:
         st.write("💬 **WhatsApp Templates**")
-        # Added OFFICE_DATA keys to the list
         wa_opts = ["Intro / Greeting", "Follow-up (FOMO)", "Ghost / RNR"] + list(OFFICE_DATA.keys()) + list(PROJECT_DATA.keys())
         msg_choice = st.selectbox("Message Select Karo:", wa_opts, label_visibility="collapsed")
         
@@ -257,10 +254,8 @@ def open_lead_modal(row_dict, users_df):
             msg_text = f"Namaste {name} ji, 'Rustle Court' me kuch plots hold par gaye hain. Manager list finalize kar rahe hain. Kya main aapka naam Visitor List me daal du Sunday ke liye? - TerraTip"
         elif msg_choice == "Ghost / RNR":
              msg_text = f"Namaste {name} ji, TerraTip se call kar rahe thay. Aapne interest dikhaya tha par baat nahi ho pa rahi. Hum aapki file close kar rahe hain. Agar future me interest ho toh bataiyega."
-        # Logic for Office Locations
         elif msg_choice in OFFICE_DATA:
              link = OFFICE_DATA[msg_choice]
-             # Extract simple name (e.g. "Lucknow Office Location" -> "Lucknow Office")
              office_name = msg_choice.replace(" Location", "") 
              msg_text = f"Namaste {name} ji, Site visit ke liye humara {office_name} yahan hai: {link}. Aane se pehle call kar lijiyega."
         elif msg_choice in PROJECT_DATA:
@@ -672,6 +667,51 @@ def show_insights():
         agents = df[df['Source'] == 'Agent']
         if not agents.empty and 'Agent Name' in df.columns:
             st.bar_chart(agents['Agent Name'].value_counts())
+
+# --- ADMIN PANEL ---
+def show_admin(users_df):
+    c1, c2 = st.columns([1,2])
+    with c1:
+        st.subheader("Naya User Banao")
+        with st.form("nu"):
+            u = st.text_input("Username"); p = st.text_input("Password", type="password")
+            n = st.text_input("Naam (Full Name)"); r = st.selectbox("Role", ["Telecaller", "Sales Specialist", "Manager"])
+            if st.form_submit_button("Create User"):
+                users_sheet.append_row([u, hash_pass(p), r, n]); st.success("Created!"); st.rerun()
+        st.divider()
+        st.subheader("📥 Upload CSV")
+        ag = st.multiselect("Assign To", users_df['Username'].tolist())
+        up = st.file_uploader("CSV File Chuno", type=['csv'])
+        if up and st.button("Upload"):
+            if not ag: st.error("Agent Select Karo!")
+            else:
+                try:
+                    try: df_up = pd.read_csv(up, encoding='utf-8')
+                    except: df_up = pd.read_csv(up, encoding='ISO-8859-1')
+                    cols = [c.lower() for c in df_up.columns]
+                    n_i = next((i for i, c in enumerate(cols) if "name" in c), -1)
+                    p_i = next((i for i, c in enumerate(cols) if "phone" in c or "mobile" in c), -1)
+                    if n_i == -1 or p_i == -1: st.error("Name ya Phone column nahi mila")
+                    else:
+                        nc = df_up.columns[n_i]; pc = df_up.columns[p_i]
+                        ex_phones = set(re.sub(r'\D', '', str(p))[-10:] for p in leads_sheet.col_values(4))
+                        rows = []; cyc = itertools.cycle(ag); ts = get_ist_time()
+                        for _, r in df_up.iterrows():
+                            p_clean = re.sub(r'\D', '', str(r[pc]))[-10:]
+                            if len(p_clean)==10 and p_clean not in ex_phones:
+                                # Row matching YOUR headers
+                                rows.append([generate_lead_id(), ts, r[nc], p_clean, "Upload", "", next(cyc), "Naya Lead", "", "", "", "", "", "", "", "", ""])
+                                ex_phones.add(p_clean)
+                        if rows: leads_sheet.append_rows(rows); st.success(f"Added {len(rows)} leads"); time.sleep(1); st.rerun()
+                except Exception as e: st.error(str(e))
+    with c2:
+        st.subheader("Team")
+        st.dataframe(users_df[['Name','Role']], hide_index=True)
+        opts = [x for x in users_df['Username'].unique() if x != st.session_state['username']]
+        if opts:
+            d_u = st.selectbox("Delete User", opts)
+            if st.button("❌ Delete User"):
+                cell = users_sheet.find(d_u); users_sheet.delete_rows(cell.row); st.success("Deleted"); st.rerun()
 
 # --- ROUTER ---
 c_search, c_menu = st.columns([0.85, 0.15])
