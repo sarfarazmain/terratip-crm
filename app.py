@@ -198,6 +198,7 @@ def get_status_icon(status):
     if "lost" in s or "mehenga" in s: return "📉"
     if "interest" in s or "baat" in s: return "🔥"
     if "junk" in s: return "🗑️"
+    if "sale" in s or "booking" in s: return "💰"
     return "📞"
 
 # --- MENU ---
@@ -339,7 +340,8 @@ CARD_STYLE = """
     .lead-card { background-color: var(--secondary-background-color); border: 1px solid rgba(128, 128, 128, 0.2); border-radius: 12px; padding: 16px; padding-left: 24px; margin-bottom: 14px; box-shadow: 0 2px 4px rgba(0,0,0,0.05); position: relative; transition: transform 0.2s, box-shadow 0.2s; overflow: hidden; }
     .lead-card:hover { transform: translateY(-3px); box-shadow: 0 6px 12px rgba(0,0,0,0.15); border-color: rgba(128, 128, 128, 0.4); }
     .status-strip { position: absolute; left: 0; top: 0; bottom: 0; width: 6px; border-top-left-radius: 12px; border-bottom-left-radius: 12px; }
-    .strip-red { background-color: #FF5252; } .strip-orange { background-color: #FFA726; } .strip-green { background-color: #66BB6A; } .strip-grey { background-color: #9E9E9E; }
+    .strip-red { background-color: #FF5252; } .strip-orange { background-color: #FFA726; } .strip-green { background-color: #66BB6A; } 
+    .strip-grey { background-color: #9E9E9E; } .strip-gold { background-color: #FFD700; } .strip-blue { background-color: #42A5F5; }
     .card-top { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 6px; }
     .card-name { font-size: 1.15rem; font-weight: 700; color: var(--text-color); line-height: 1.2; }
     .card-subtext { font-size: 0.85rem; color: var(--text-color); opacity: 0.7; margin-top: 2px; display: flex; align-items: center; gap: 6px; }
@@ -350,7 +352,7 @@ CARD_STYLE = """
     .status-text { font-size: 1rem; color: var(--text-color); font-weight: 500; }
     .card-footer { display: flex; justify-content: space-between; align-items: center; border-top: 1px solid rgba(128, 128, 128, 0.2); padding-top: 10px; font-size: 0.8rem; color: var(--text-color); opacity: 0.8; }
     .footer-highlight { font-weight: 600; opacity: 1; display: flex; align-items: center; gap: 5px; }
-    .txt-red { color: #FF5252; } .txt-green { color: #66BB6A; } .txt-orange { color: #FFA726; } .txt-blue { color: #42A5F5; }
+    .txt-red { color: #FF5252; } .txt-green { color: #66BB6A; } .txt-orange { color: #FFA726; } .txt-blue { color: #42A5F5; } .txt-gold { color: #FFD700; }
 </style>
 """
 
@@ -360,7 +362,13 @@ def generate_cards_html(dframe, context):
     
     for i, row in dframe.iterrows():
         phone = str(row.get('Phone', '')).replace(',', '').replace('.', '')
-        display_phone = phone if len(phone) < 11 else f"+91 {phone[-10:]}"
+        
+        # MASK PHONE NUMBER - Show only last 4 digits
+        if len(phone) > 4:
+            display_phone = f"+91 ******{phone[-4:]}"
+        else:
+            display_phone = "******"
+            
         name = str(row.get('Client Name', 'Unknown'))
         raw_status = str(row.get('Status', ''))
         source = str(row.get('Source', '')).strip() 
@@ -385,6 +393,12 @@ def generate_cards_html(dframe, context):
         elif context == "Future":
             strip_class = "strip-green"
             footer_html = f"<span class='footer-highlight txt-blue'>📅 {format_date_only(f_val)}</span>"
+        elif context == "Visits":
+            strip_class = "strip-blue"
+            footer_html = "<span class='footer-highlight txt-blue'>🚌 Site Visit Done</span>"
+        elif context == "Sales":
+            strip_class = "strip-gold"
+            footer_html = "<span class='footer-highlight txt-gold'>💰 Sold / Booked</span>"
         elif context == "Recycle":
             strip_class = "strip-orange"
             footer_html = "<span class='footer-highlight'>♻️ Recycle</span>"
@@ -397,6 +411,7 @@ def generate_cards_html(dframe, context):
         tag_html = f"<span class='pill-badge'>{tag_val}</span>" if tag_val and tag_val.lower() != "nan" else ""
         src_html = f"<span class='pill-badge source-badge'>{source}</span>" if source and source.lower() != "nan" else ""
 
+        # Use full phone in ID for click detection, masked in display
         card = f"""
         <a href='#' id='{phone}' class='card-link'>
             <div class='lead-card'>
@@ -497,12 +512,24 @@ def show_crm(users_df, search_q):
     
     df['PD'] = df['Next Follow-up Date'].apply(parse_date) if 'Next Follow-up Date' in df.columns else None
     
-    dead = df['Status'].str.contains("Closed|Booked|Junk|Invalid|Agent", case=False, na=False)
+    # LOGIC FOR TABS
+    dead = df['Status'].str.contains("Junk|Invalid|Broker|Closed", case=False, na=False) # Excludes Sales from dead
     recycle = df['Status'].str.contains("Lost|Price|Location|Not Interest", case=False, na=False)
+    
+    sale_cond = df['Status'].str.contains("Sale Closed|Booking", case=False, na=False)
+    visit_cond = df['Status'].str.contains("Visit Done", case=False, na=False) # Only Visit Done
+    
+    # Priority Logic: Sale > Visit > Recycle > Junk > Action/Future
+    # We must exclude 'higher' priorities from 'lower' tabs
+    
+    # Action & Future should NOT show if it's already Sold, Visited, Recycled or Junk
+    exclude_mask = sale_cond | visit_cond | recycle | dead
+    
     action_cond = (df['PD'].notna() & (df['PD'] <= today)) | df['Status'].str.contains("Naya|New", case=False, na=False)
     future_cond = (df['PD'].notna() & (df['PD'] > today))
     
-    t1, t2, t3, t4 = st.tabs([f"🔥 Action (Aaj ka)", f"📅 Future (Aage ka)", f"♻️ Recycle", f"❌ Closed"])
+    # 6 TABS
+    t1, t2, t3, t4, t5, t6 = st.tabs(["🔥 Action", "📅 Future", "🏆 Site Visits", "✅ Sales", "♻️ Recycle", "❌ Junk"])
     
     def render_tab_content(dframe, ctx, key_prefix):
         if dframe.empty: st.info("Koi lead nahi hai.")
@@ -520,10 +547,12 @@ def show_crm(users_df, search_q):
                     r = df[df['Phone'].astype(str).str.replace(r'\D','',regex=True) == clicked].iloc[0]
                     open_lead_modal(r.to_dict(), users_df)
 
-    with t1: render_tab_content(df[action_cond & ~dead & ~recycle], "Action", "act")
-    with t2: render_tab_content(df[future_cond & ~dead & ~recycle], "Future", "fut")
-    with t3: render_tab_content(df[recycle & ~dead], "Recycle", "rec")
-    with t4: render_tab_content(df[dead], "History", "hist")
+    with t1: render_tab_content(df[action_cond & ~exclude_mask], "Action", "act")
+    with t2: render_tab_content(df[future_cond & ~exclude_mask], "Future", "fut")
+    with t3: render_tab_content(df[visit_cond & ~sale_cond], "Visits", "vis") # Visits but not yet sold
+    with t4: render_tab_content(df[sale_cond], "Sales", "sale")
+    with t5: render_tab_content(df[recycle & ~sale_cond & ~visit_cond], "Recycle", "rec")
+    with t6: render_tab_content(df[dead & ~sale_cond], "History", "hist")
 
 # --- ADVANCED ANALYTICS ---
 def process_analytics_data(df):
