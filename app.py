@@ -240,7 +240,6 @@ def open_lead_modal(row_dict, users_df):
 
     c1, c2 = st.columns([1, 1])
     with c1: 
-        # Call button allows calling, but phone is displayed
         st.markdown(big_call_btn(phone), unsafe_allow_html=True)
         st.caption(f"**{name}** | {phone}")
     
@@ -363,13 +362,7 @@ def generate_cards_html(dframe, context):
     
     for i, row in dframe.iterrows():
         phone = str(row.get('Phone', '')).replace(',', '').replace('.', '')
-        
-        # MASK PHONE NUMBER
-        if len(phone) > 4:
-            display_phone = f"+91 ******{phone[-4:]}"
-        else:
-            display_phone = "******"
-            
+        display_phone = f"+91 ******{phone[-4:]}" if len(phone) > 4 else "******"
         name = str(row.get('Client Name', 'Unknown'))
         raw_status = str(row.get('Status', ''))
         source = str(row.get('Source', '')).strip() 
@@ -379,10 +372,8 @@ def generate_cards_html(dframe, context):
         f_val = str(row.get('Next Follow-up Date', '')).strip()
         t_val = str(row.get('Last Call Date', '')).strip()
         last_update = format_datetime(t_val)
-        
         strip_class = "strip-grey"
         footer_html = ""
-        
         if context == "Action":
             strip_class = "strip-red"
             try:
@@ -391,27 +382,15 @@ def generate_cards_html(dframe, context):
                 elif d == today: footer_html = "<span class='footer-highlight txt-orange'>🔥 Aaj Karo</span>"
                 else: footer_html = "<span class='footer-highlight txt-green'>⚡ Action</span>"
             except: footer_html = "<span class='footer-highlight txt-green'>⚡ Action</span>"
-        elif context == "Future":
-            strip_class = "strip-green"
-            footer_html = f"<span class='footer-highlight txt-blue'>📅 {format_date_only(f_val)}</span>"
-        elif context == "Visits":
-            strip_class = "strip-blue"
-            footer_html = "<span class='footer-highlight txt-blue'>🚌 Site Visit Done</span>"
-        elif context == "Sales":
-            strip_class = "strip-gold"
-            footer_html = "<span class='footer-highlight txt-gold'>💰 Sold / Booked</span>"
-        elif context == "Recycle":
-            strip_class = "strip-orange"
-            footer_html = "<span class='footer-highlight'>♻️ Recycle</span>"
-        else: 
-            strip_class = "strip-grey"
-            footer_html = "<span>🔒 Closed</span>"
-
+        elif context == "Future": strip_class = "strip-green"; footer_html = f"<span class='footer-highlight txt-blue'>📅 {format_date_only(f_val)}</span>"
+        elif context == "Visits": strip_class = "strip-blue"; footer_html = "<span class='footer-highlight txt-blue'>🚌 Site Visit Done</span>"
+        elif context == "Sales": strip_class = "strip-gold"; footer_html = "<span class='footer-highlight txt-gold'>💰 Sold / Booked</span>"
+        elif context == "Recycle": strip_class = "strip-orange"; footer_html = "<span class='footer-highlight'>♻️ Recycle</span>"
+        else: strip_class = "strip-grey"; footer_html = "<span>🔒 Closed</span>"
         icon = get_status_icon(raw_status)
         display_status = "Lost" if "Lost" in raw_status else raw_status.split(" /")[0]
         tag_html = f"<span class='pill-badge'>{tag_val}</span>" if tag_val and tag_val.lower() != "nan" else ""
         src_html = f"<span class='pill-badge source-badge'>{source}</span>" if source and source.lower() != "nan" else ""
-
         card = f"""
         <a href='#' id='{phone}' class='card-link'>
             <div class='lead-card'>
@@ -430,8 +409,7 @@ def generate_cards_html(dframe, context):
                     {footer_html}<span>🕒 {last_update}</span>
                 </div>
             </div>
-        </a>
-        """
+        </a>"""
         html += card
     return html
 
@@ -440,11 +418,9 @@ def generate_cards_html(dframe, context):
 def show_crm(users_df, search_q):
     try: data = leads_sheet.get_all_records(); df = pd.DataFrame(data)
     except: return
-    
     if st.session_state['role'] == "Telecaller":
         if 'Assigned TC Email' in df.columns:
             df = df[(df['Assigned TC Email'] == st.session_state['username']) | (df['Assigned TC Email'] == st.session_state['name'])]
-
     if search_q:
         res = df[df.astype(str).apply(lambda x: x.str.contains(search_q, case=False)).any(axis=1)]
         st.info(f"🔍 Found {len(res)}")
@@ -453,15 +429,12 @@ def show_crm(users_df, search_q):
             r = df[df['Phone'].astype(str).str.replace(r'\D','',regex=True) == clicked].iloc[0]
             open_lead_modal(r.to_dict(), users_df)
         return
-
     today = get_ist_date()
-    
     c_search, c_toggle = st.columns([0.65, 0.35])
     with c_search: pass
     is_bulk = False
     if st.session_state['role'] == "Manager":
         with c_toggle: is_bulk = st.toggle("⚡ Bulk")
-    
     if is_bulk:
         st.info("Select leads")
         c1, c2, c3 = st.columns([1.5, 1.5, 1])
@@ -505,27 +478,18 @@ def show_crm(users_df, search_q):
                         for r in sorted(to_del, reverse=True): leads_sheet.delete_rows(r)
                         st.success("Deleted"); time.sleep(1); st.rerun()
                     except: st.error("Error")
-
     def parse_date(v):
         try: return datetime.strptime(str(v).strip(), "%Y-%m-%d").date()
         except: return None
-    
     df['PD'] = df['Next Follow-up Date'].apply(parse_date) if 'Next Follow-up Date' in df.columns else None
-    
     dead = df['Status'].str.contains("Closed|Booked|Junk|Invalid|Agent", case=False, na=False)
     recycle = df['Status'].str.contains("Lost|Price|Location|Not Interest", case=False, na=False)
-    
     sale_cond = df['Status'].str.contains("Sale Closed|Booking", case=False, na=False)
     visit_cond = df['Status'].str.contains("Visit Done", case=False, na=False)
-    
     exclude_mask = sale_cond | visit_cond | recycle | dead
-    
     action_cond = (df['PD'].notna() & (df['PD'] <= today)) | df['Status'].str.contains("Naya|New", case=False, na=False)
     future_cond = (df['PD'].notna() & (df['PD'] > today))
-    
-    # 6 TABS
     t1, t2, t3, t4, t5, t6 = st.tabs(["🔥 Action", "📅 Future", "🏆 Site Visits", "✅ Sales", "♻️ Recycle", "❌ Junk"])
-    
     def render_tab_content(dframe, ctx, key_prefix):
         if dframe.empty: st.info("Koi lead nahi hai.")
         else:
@@ -539,9 +503,8 @@ def show_crm(users_df, search_q):
                 html = generate_cards_html(dframe, ctx)
                 clicked = click_detector(html, key=f"click_{key_prefix}")
                 if clicked:
-                    r = df[df['Phone'].astype(str).str.replace(r'\D','',regex=True) == clicked]
-                    if not r.empty: open_lead_modal(r.iloc[0].to_dict(), users_df)
-
+                    r = df[df['Phone'].astype(str).str.replace(r'\D','',regex=True) == clicked].iloc[0]
+                    open_lead_modal(r.to_dict(), users_df)
     with t1: render_tab_content(df[action_cond & ~exclude_mask], "Action", "act")
     with t2: render_tab_content(df[future_cond & ~exclude_mask], "Future", "fut")
     with t3: render_tab_content(df[visit_cond & ~sale_cond], "Visits", "vis")
@@ -554,69 +517,39 @@ def process_analytics_data(df):
     df['Last Call Obj'] = pd.to_datetime(df['Last Call Date'], format="%Y-%m-%d %H:%M", errors='coerce')
     df['Created Obj'] = pd.to_datetime(df['Timestamp'], format="%Y-%m-%d %H:%M", errors='coerce')
     df['Next Follow Obj'] = pd.to_datetime(df['Next Follow-up Date'], format="%Y-%m-%d", errors='coerce')
-
     total_leads = len(df)
     total_closed = len(df[df['Status'].str.contains("Sale Closed", case=False, na=False)])
-    
     total_visits = len(df[df['Status'].str.contains("Visit Done|Visit Scheduled", case=False, na=False)])
     visit_conversion = (total_closed / total_visits * 100) if total_visits > 0 else 0
-    
     today_ts = pd.Timestamp(datetime.now().date())
     active_mask = ~df['Status'].str.contains("Closed|Lost|Junk|Broker", case=False, na=False)
     overdue_mask = (df['Next Follow Obj'] < today_ts)
     leakage_count = len(df[active_mask & overdue_mask])
-
     closed_leads = df[df['Status'].str.contains("Sale Closed", case=False, na=False)].copy()
     avg_cycle = (closed_leads['Last Call Obj'] - closed_leads['Created Obj']).dt.days.mean() if not closed_leads.empty else 0
-        
-    return {
-        "total": total_leads,
-        "closed": total_closed,
-        "visits": total_visits,
-        "visit_conv": visit_conversion,
-        "leakage": leakage_count,
-        "cycle": avg_cycle,
-        "df": df
-    }
+    return {"total": total_leads, "closed": total_closed, "visits": total_visits, "visit_conv": visit_conversion, "leakage": leakage_count, "cycle": avg_cycle, "df": df}
 
 def show_insights():
-    try: 
-        data = leads_sheet.get_all_records()
-        df = pd.DataFrame(data)
-    except: 
-        st.error("Data load failed."); return
-
+    try: data = leads_sheet.get_all_records(); df = pd.DataFrame(data)
+    except: st.error("Data load failed."); return
     if 'Last Call Date' not in df.columns: st.error("Header Error: 'Last Call Date' column missing."); return
-
-    metrics = process_analytics_data(df)
-    df = metrics["df"]
-    
+    metrics = process_analytics_data(df); df = metrics["df"]
     st.title("🧠 Management Intelligence")
-    
     k1, k2, k3, k4 = st.columns(4)
     k1.metric("💰 Total Sales", metrics["closed"])
     k2.metric("🚌 Total Visits", metrics["visits"])
     k3.metric("🎯 Visit-to-Sale %", f"{metrics['visit_conv']:.1f}%")
     k4.metric("⚠️ Missed Follow-ups", metrics["leakage"], delta_color="inverse")
     if metrics["leakage"] > 0: st.error(f"🚨 **Action Required:** {metrics['leakage']} Leads are rotting!")
-
     st.divider()
-    
     t0, t1, t2, t3, t4 = st.tabs(["📅 Today's Report", "📉 Rejection Analysis", "👥 Monthly Perf", "⏰ Time Strategy", "🕵️ Source"])
-    
     with t0:
         st.subheader(f"Activity Report: {get_ist_date()}")
         today_df = df[df['Last Call Obj'].dt.date == get_ist_date()]
         if not today_df.empty and 'Assigned TC Email' in df.columns:
-            daily_ops = today_df.groupby('Assigned TC Email').agg(
-                Total_Calls=('Status', 'count'),
-                Not_Connected=('Status', lambda x: x.str.contains('Ringing|Switch|RNR', case=False, na=False).sum()),
-                Visits_Scheduled=('Status', lambda x: x.str.contains('Visit Scheduled', case=False, na=False).sum()),
-                Sales_Closed=('Status', lambda x: x.str.contains('Sale Closed', case=False, na=False).sum())
-            ).reset_index()
+            daily_ops = today_df.groupby('Assigned TC Email').agg(Total_Calls=('Status', 'count'), Not_Connected=('Status', lambda x: x.str.contains('Ringing|Switch|RNR', case=False, na=False).sum()), Visits_Scheduled=('Status', lambda x: x.str.contains('Visit Scheduled', case=False, na=False).sum()), Sales_Closed=('Status', lambda x: x.str.contains('Sale Closed', case=False, na=False).sum())).reset_index()
             st.dataframe(daily_ops, use_container_width=True)
         else: st.info("No calls recorded today yet.")
-
     with t1:
         st.subheader("Why are people saying NO?")
         lost_leads = df[df['Status'].str.contains("Lost|Junk", case=False, na=False)]
@@ -631,66 +564,33 @@ def show_insights():
             lost_leads['Reason'] = lost_leads['Status'].apply(extract_reason)
             st.bar_chart(lost_leads['Reason'].value_counts())
         else: st.info("No lost leads yet.")
-
     with t2:
         st.subheader("Monthly Efficiency")
         if 'Assigned TC Email' in df.columns:
             df['Month'] = df['Last Call Obj'].dt.strftime('%Y-%m')
-            perf = df.groupby(['Assigned TC Email', 'Month']).agg(
-                Calls=('Last Call Date', 'count'),
-                Visits=('Status', lambda x: x.str.contains('Visit').sum()),
-                Sales=('Status', lambda x: x.str.contains('Sale Closed').sum())
-            ).reset_index()
+            perf = df.groupby(['Assigned TC Email', 'Month']).agg(Calls=('Last Call Date', 'count'), Visits=('Status', lambda x: x.str.contains('Visit').sum()), Sales=('Status', lambda x: x.str.contains('Sale Closed').sum())).reset_index()
             st.dataframe(perf, use_container_width=True)
-
     with t3:
         st.subheader("📞 Best Time to Call (Connected Calls)")
         if 'Last Call Obj' in df.columns:
             df['Hour'] = df['Last Call Obj'].dt.hour
             connected = df[~df['Status'].str.contains("Ringing|Switch|RNR|Naya", case=False, na=False)]
-            
             if not connected.empty:
-                hourly_data = connected['Hour'].value_counts().reset_index()
-                hourly_data.columns = ['Hour', 'Count']
-                
-                # Format to "9 AM", "10 AM" and ensure numeric sort
+                hourly_data = connected['Hour'].value_counts().reset_index(); hourly_data.columns = ['Hour', 'Count']
                 hourly_data['Label'] = hourly_data['Hour'].apply(lambda x: f"{x % 12 or 12} {'AM' if x < 12 else 'PM'}")
                 hourly_data = hourly_data.sort_values('Hour')
-                
-                chart = alt.Chart(hourly_data).mark_area(
-                    line={'color':'#28a745'},
-                    color=alt.Gradient(
-                        gradient='linear',
-                        stops=[alt.GradientStop(color='#28a745', offset=0),
-                               alt.GradientStop(color='rgba(255,255,255,0)', offset=1)],
-                        x1=1, x2=1, y1=1, y2=0
-                    )
-                ).encode(
-                    # ALTAIR TRICK: Sort by the underlying 'Hour' integer, display 'Label' string
-                    x=alt.X('Label', sort=hourly_data['Label'].tolist(), title="Hour"),
-                    y=alt.Y('Count', title="Pickups"),
-                    tooltip=['Label', 'Count']
-                ).properties(height=350)
-                
+                chart = alt.Chart(hourly_data).mark_area(line={'color':'#28a745'}, color=alt.Gradient(gradient='linear', stops=[alt.GradientStop(color='#28a745', offset=0), alt.GradientStop(color='rgba(255,255,255,0)', offset=1)], x1=1, x2=1, y1=1, y2=0)).encode(x=alt.X('Label', sort=hourly_data['Label'].tolist(), title="Hour"), y=alt.Y('Count', title="Pickups"), tooltip=['Label', 'Count']).properties(height=350)
                 st.altair_chart(chart, use_container_width=True)
                 st.caption("Graph shows actual pickups. Schedule calls during peaks.")
-            else:
-                st.info("Not enough connected call data yet.")
-
+            else: st.info("Not enough connected call data yet.")
     with t4:
         st.subheader("Source Performance")
-        src_perf = df.groupby('Source').agg(
-            Total=('Status', 'count'),
-            Sales=('Status', lambda x: x.str.contains('Sale Closed').sum())
-        ).reset_index()
+        src_perf = df.groupby('Source').agg(Total=('Status', 'count'), Sales=('Status', lambda x: x.str.contains('Sale Closed').sum())).reset_index()
         src_perf['Conv %'] = (src_perf['Sales'] / src_perf['Total'] * 100).round(1)
         st.dataframe(src_perf, use_container_width=True)
-        
-        st.divider()
-        st.subheader("External Agent Stats")
+        st.divider(); st.subheader("External Agent Stats")
         agents = df[df['Source'] == 'Agent']
-        if not agents.empty and 'Agent Name' in df.columns:
-            st.bar_chart(agents['Agent Name'].value_counts())
+        if not agents.empty and 'Agent Name' in df.columns: st.bar_chart(agents['Agent Name'].value_counts())
 
 # --- ADMIN PANEL ---
 def show_admin(users_df):
@@ -700,8 +600,7 @@ def show_admin(users_df):
         with st.form("nu"):
             u = st.text_input("Username"); p = st.text_input("Password", type="password")
             n = st.text_input("Naam"); r = st.selectbox("Role", ["Telecaller", "Sales Specialist", "Manager"])
-            if st.form_submit_button("Create"):
-                users_sheet.append_row([u, hash_pass(p), r, n]); st.success("Created!"); st.rerun()
+            if st.form_submit_button("Create"): users_sheet.append_row([u, hash_pass(p), r, n]); st.success("Created!"); st.rerun()
     with t2:
         st.subheader("User Details Update Karo")
         target_u = st.selectbox("Kaunsa User?", users_df['Username'].tolist())
@@ -712,71 +611,50 @@ def show_admin(users_df):
             new_p = st.text_input("Naya Password (Khaali chhodein agar purana rakhna hai)", type="password")
             if st.form_submit_button("Update User"):
                 cell = users_sheet.find(target_u)
-                users_sheet.update_cell(cell.row, 4, new_n)
-                users_sheet.update_cell(cell.row, 3, new_r)
+                users_sheet.update_cell(cell.row, 4, new_n); users_sheet.update_cell(cell.row, 3, new_r)
                 if new_p: users_sheet.update_cell(cell.row, 2, hash_pass(new_p))
                 st.success("Updated!"); st.rerun()
-        if st.button("❌ User Delete Karo"):
-            cell = users_sheet.find(target_u); users_sheet.delete_rows(cell.row); st.success("Deleted"); st.rerun()
+        if st.button("❌ User Delete Karo"): cell = users_sheet.find(target_u); users_sheet.delete_rows(cell.row); st.success("Deleted"); st.rerun()
     with t3:
         st.subheader("CSV Upload")
         c1, c2 = st.columns(2)
-        with c1:
-            upload_source = st.text_input("Source Name", value="Bulk Upload")
-        with c2:
-            upload_tag = st.text_input("Tag / Filter (e.g. Hot Data)", value="")
-            
+        with c1: upload_source = st.text_input("Source Name", value="Bulk Upload")
+        with c2: upload_tag = st.text_input("Tag / Filter (e.g. Hot Data)", value="")
         ag = st.multiselect("Assign To", users_df['Username'].tolist())
         up = st.file_uploader("CSV", type=['csv'])
-        
-        if up and ag and st.button("Upload"):
-            try:
-                try: df_up = pd.read_csv(up, encoding='utf-8')
-                except: df_up = pd.read_csv(up, encoding='ISO-8859-1')
-                cols = [c.lower() for c in df_up.columns]
-                n_i = next((i for i, c in enumerate(cols) if "name" in c), -1)
-                p_i = next((i for i, c in enumerate(cols) if "phone" in c or "mobile" in c), -1)
-                if n_i == -1 or p_i == -1: st.error("Name ya Phone column nahi mila")
-                else:
-                    nc = df_up.columns[n_i]; pc = df_up.columns[p_i]
-                    ex_phones = set(re.sub(r'\D', '', str(p))[-10:] for p in leads_sheet.col_values(4))
-                    rows = []; cyc = itertools.cycle(ag); ts = get_ist_time()
-                    for _, r in df_up.iterrows():
-                        p_clean = re.sub(r'\D', '', str(r[pc]))[-10:]
-                        if len(p_clean)==10 and p_clean not in ex_phones:
-                            rows.append([
-                                generate_lead_id(), 
-                                ts, 
-                                r[nc], 
-                                p_clean, 
-                                upload_source, 
-                                "", 
-                                next(cyc), 
-                                "Naya Lead", 
-                                "", "", "", "", "", "", "", "", 
-                                upload_tag
-                            ])
-                            ex_phones.add(p_clean)
-                    if rows: leads_sheet.append_rows(rows); st.success(f"Added {len(rows)} leads"); time.sleep(1); st.rerun()
-            except Exception as e: st.error(str(e))
+        if up and ag:
+            if st.button("Upload"):
+                with st.spinner("Processing..."):
+                    try:
+                        try: df_up = pd.read_csv(up, encoding='utf-8')
+                        except: df_up = pd.read_csv(up, encoding='ISO-8859-1')
+                        cols = [c.lower() for c in df_up.columns]
+                        n_i = next((i for i, c in enumerate(cols) if "name" in c), -1)
+                        p_i = next((i for i, c in enumerate(cols) if "phone" in c or "mobile" in c), -1)
+                        if n_i == -1 or p_i == -1: st.error("Name ya Phone column nahi mila")
+                        else:
+                            nc = df_up.columns[n_i]; pc = df_up.columns[p_i]
+                            ex_phones = set(re.sub(r'\D', '', str(p))[-10:] for p in leads_sheet.col_values(4))
+                            rows = []; cyc = itertools.cycle(ag); ts = get_ist_time()
+                            for _, r in df_up.iterrows():
+                                p_clean = re.sub(r'\D', '', str(r[pc]))[-10:]
+                                if len(p_clean)==10 and p_clean not in ex_phones:
+                                    rows.append([generate_lead_id(), ts, r[nc], p_clean, upload_source, "", next(cyc), "Naya Lead", "", "", "", "", "", "", "", "", upload_tag])
+                                    ex_phones.add(p_clean)
+                            if rows: leads_sheet.append_rows(rows); st.success(f"Successfully Added {len(rows)} leads!"); time.sleep(1); st.rerun()
+                            else: st.warning("No new leads added. All numbers might be duplicates or invalid.")
+                    except Exception as e: st.error(str(e))
 
 # --- ROUTER ---
 c_search, c_menu = st.columns([0.85, 0.15])
 with c_search:
-    if st.session_state['current_page'] == "CRM":
-        search_query = st.text_input("Search", placeholder="Naam ya Number likho...", label_visibility="collapsed")
+    if st.session_state['current_page'] == "CRM": search_query = st.text_input("Search", placeholder="Search...", label_visibility="collapsed")
     else: st.write(f"## {st.session_state['current_page']}")
-
 with c_menu:
-    if st.button("🍔", use_container_width=True): open_main_menu()
-
+    if st.button("🍔"): open_main_menu()
 st.divider()
-
-if st.session_state['current_page'] == "CRM":
-    q = search_query if 'search_query' in locals() and search_query else None
-    show_crm(users_df, q)
-elif st.session_state['current_page'] == "Insights":
-    show_insights()
+if st.session_state['current_page'] == "CRM": show_crm(users_df, search_query if 'search_query' in locals() else None)
+elif st.session_state['current_page'] == "Insights": show_insights()
 elif st.session_state['current_page'] == "Admin":
     if st.session_state['role'] == "Manager": show_admin(users_df)
     else: st.error("⛔ Access Denied")
