@@ -772,12 +772,18 @@ def show_admin(users_df):
                 
                 # Filter for Junk/Broker/Invalid/Bekar
                 junk_mask = df['Status'].str.contains("Junk|Broker|Invalid|Bekar", case=False, na=False)
-                junk_df = df[junk_mask]
+                junk_df = df[junk_mask].copy()
                 
                 if not junk_df.empty:
-                    # Clean phones: Remove non-digits, ensure country code if missing
-                    # Note: Meta accepts various formats, but raw digits with country code is best.
-                    # Here we export what is in the sheet, usually 10 digits. Meta handles it well if you select "IN (+91)" during upload.
+                    # Clean for Meta: Remove non-digits, ensure 91 prefix
+                    def format_for_meta(val):
+                        s = re.sub(r'\D', '', str(val)) # Remove + - space
+                        if len(s) == 10: return f"91{s}" # Add 91 to 10 digit
+                        if len(s) == 11 and s.startswith('0'): return f"91{s[1:]}" # Fix 098...
+                        if len(s) == 12 and s.startswith('91'): return s # Already good
+                        return s # Return raw if unsure
+
+                    junk_df['Phone'] = junk_df['Phone'].apply(format_for_meta)
                     
                     csv = junk_df[['Phone']].to_csv(index=False).encode('utf-8')
                     
