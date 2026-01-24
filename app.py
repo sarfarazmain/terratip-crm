@@ -1,15 +1,3 @@
-Here is the **100% Complete, Final, and Production-Ready Code**.
-
-It includes **every single feature** we built:
-
-* **Security:** Masked phone numbers & Friction logic.
-* **Analytics:** Leakage tracking, Rejection charts, Time Heatmaps.
-* **Admin:** CSV Upload (with Source/Tags), User Editing, and **Meta-Ready Junk Export**.
-* **Workflow:** 6 Distinct Tabs (including High Intent & Sales).
-
-Copy and paste this into your `app.py`.
-
-```python
 import streamlit as st
 import pandas as pd
 import gspread
@@ -831,5 +819,3 @@ elif st.session_state['current_page'] == "Insights":
 elif st.session_state['current_page'] == "Admin":
     if st.session_state['role'] == "Manager": show_admin(users_df)
     else: st.error("⛔ Access Denied")
-
-```
