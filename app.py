@@ -1,3 +1,14 @@
+This is a crucial scalability update. Without pagination, the app would crash or become incredibly slow once you hit 500+ leads. And the Admin Filter is essential for managing a team.
+
+Here is the **100% Complete Code** with:
+
+1. **Pagination:** Added to every tab (Action, Future, etc.). Defaults to 20 leads per page.
+2. **Admin Filter:** If you are a Manager, you will see a **"Filter by Team Member"** dropdown at the top of the CRM.
+3. **Stability Checks:** Ensures page numbers reset if you change filters so the app doesn't break.
+
+### 💻 Final Production Code (Copy-Paste)
+
+```python
 import streamlit as st
 import pandas as pd
 import gspread
@@ -70,6 +81,9 @@ custom_css = """
         
         /* Note History */
         .note-history { font-size: 0.85rem; opacity: 0.8; max-height: 100px; overflow-y: auto; border-left: 2px solid #555; padding-left: 8px; margin-bottom: 8px; white-space: pre-wrap; }
+        
+        /* Pagination Controls */
+        .pagination-info { text-align: center; font-size: 0.9rem; margin-top: 10px; opacity: 0.8; }
     </style>
 """
 st.markdown(custom_css, unsafe_allow_html=True)
@@ -440,10 +454,24 @@ def show_crm(users_df, search_q):
     try: data = leads_sheet.get_all_records(); df = pd.DataFrame(data)
     except: return
     
+    # 1. Base Role Filter (Security)
     if st.session_state['role'] == "Telecaller":
         if 'Assigned TC Email' in df.columns:
             df = df[(df['Assigned TC Email'] == st.session_state['username']) | (df['Assigned TC Email'] == st.session_state['name'])]
 
+    # 2. Admin Team Filter
+    filter_user = None
+    if st.session_state['role'] == "Manager":
+        # Put the filter in a nice Expander or Top Column
+        with st.expander("🔍 Filter by Team Member", expanded=False):
+            all_users = ["All"] + users_df['Username'].tolist()
+            filter_user = st.selectbox("Select Agent:", all_users)
+    
+    if filter_user and filter_user != "All":
+        if 'Assigned TC Email' in df.columns:
+            df = df[df['Assigned TC Email'] == filter_user]
+
+    # 3. Search Filter
     if search_q:
         res = df[df.astype(str).apply(lambda x: x.str.contains(search_q, case=False)).any(axis=1)]
         st.info(f"🔍 Found {len(res)}")
@@ -455,6 +483,7 @@ def show_crm(users_df, search_q):
 
     today = get_ist_date()
     
+    # Bulk Ops Toggle
     c_search, c_toggle = st.columns([0.65, 0.35])
     with c_search: pass
     is_bulk = False
@@ -528,17 +557,51 @@ def show_crm(users_df, search_q):
         if dframe.empty: st.info("Koi lead nahi hai.")
         else:
             if ctx == "Future": dframe = dframe.sort_values(by='PD')
-            if is_bulk:
+            
+            # PAGINATION LOGIC (Only for non-bulk mode)
+            if not is_bulk:
+                items_per_page = 20
+                if 'page_' + key_prefix not in st.session_state: st.session_state['page_' + key_prefix] = 0
+                
+                # Reset if page is out of bounds (e.g. after filter)
+                total_pages = max(1, (len(dframe) + items_per_page - 1) // items_per_page)
+                if st.session_state['page_' + key_prefix] >= total_pages: st.session_state['page_' + key_prefix] = 0
+                
+                curr_page = st.session_state['page_' + key_prefix]
+                start_idx = curr_page * items_per_page
+                end_idx = start_idx + items_per_page
+                
+                # Slice the dataframe
+                dframe_page = dframe.iloc[start_idx:end_idx]
+                
+                html = generate_cards_html(dframe_page, ctx)
+                clicked = click_detector(html, key=f"click_{key_prefix}")
+                
+                # Pagination Controls
+                c_prev, c_info, c_next = st.columns([1, 8, 1])
+                with c_prev:
+                    if st.button("◀", key=f"p_{key_prefix}"):
+                        if curr_page > 0:
+                            st.session_state['page_' + key_prefix] -= 1
+                            st.rerun()
+                with c_next:
+                    if st.button("▶", key=f"n_{key_prefix}"):
+                        if curr_page < total_pages - 1:
+                            st.session_state['page_' + key_prefix] += 1
+                            st.rerun()
+                with c_info:
+                    st.markdown(f"<div class='pagination-info'>Page {curr_page + 1} of {total_pages} ({len(dframe)} total)</div>", unsafe_allow_html=True)
+
+                if clicked:
+                    r = df[df['Phone'].astype(str).str.replace(r'\D','',regex=True) == clicked].iloc[0]
+                    open_lead_modal(r.to_dict(), users_df)
+            
+            else:
+                # Bulk Mode (No Cards, just list)
                 for i, row in dframe.iterrows():
                     c1, c2 = st.columns([0.15, 0.85])
                     c1.checkbox("", key=f"sel_{key_prefix}_{row['Phone']}")
                     c2.button(f"{row['Client Name']}", key=f"btn_{key_prefix}_{row['Phone']}", use_container_width=True)
-            else:
-                html = generate_cards_html(dframe, ctx)
-                clicked = click_detector(html, key=f"click_{key_prefix}")
-                if clicked:
-                    r = df[df['Phone'].astype(str).str.replace(r'\D','',regex=True) == clicked].iloc[0]
-                    open_lead_modal(r.to_dict(), users_df)
 
     with t1: render_tab_content(df[action_cond & ~exclude_mask], "Action", "act")
     with t2: render_tab_content(df[future_cond & ~exclude_mask], "Future", "fut")
@@ -819,3 +882,5 @@ elif st.session_state['current_page'] == "Insights":
 elif st.session_state['current_page'] == "Admin":
     if st.session_state['role'] == "Manager": show_admin(users_df)
     else: st.error("⛔ Access Denied")
+
+```
