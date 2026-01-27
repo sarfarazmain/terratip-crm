@@ -1,14 +1,3 @@
-This is a crucial scalability update. Without pagination, the app would crash or become incredibly slow once you hit 500+ leads. And the Admin Filter is essential for managing a team.
-
-Here is the **100% Complete Code** with:
-
-1. **Pagination:** Added to every tab (Action, Future, etc.). Defaults to 20 leads per page.
-2. **Admin Filter:** If you are a Manager, you will see a **"Filter by Team Member"** dropdown at the top of the CRM.
-3. **Stability Checks:** Ensures page numbers reset if you change filters so the app doesn't break.
-
-### 💻 Final Production Code (Copy-Paste)
-
-```python
 import streamlit as st
 import pandas as pd
 import gspread
@@ -882,5 +871,3 @@ elif st.session_state['current_page'] == "Insights":
 elif st.session_state['current_page'] == "Admin":
     if st.session_state['role'] == "Manager": show_admin(users_df)
     else: st.error("⛔ Access Denied")
-
-```
