@@ -29,7 +29,7 @@ custom_css = """
         [data-testid="stSidebarCollapsedControl"] {display: none;}
         
         /* 1. INPUT FIELDS */
-        .stTextInput input, .stSelectbox div[data-baseweb="select"], .stTextArea textarea {
+        .stTextInput input, .stSelectbox div[data-baseweb="select"], .stTextArea textarea, .stMultiSelect div[data-baseweb="select"] {
             background-color: var(--secondary-background-color) !important;
             color: var(--text-color) !important;
             border: 1px solid var(--text-color) !important;
@@ -71,7 +71,7 @@ custom_css = """
         /* Note History */
         .note-history { font-size: 0.85rem; opacity: 0.8; max-height: 100px; overflow-y: auto; border-left: 2px solid #555; padding-left: 8px; margin-bottom: 8px; white-space: pre-wrap; }
         
-        /* Pagination Controls */
+        /* Pagination Info */
         .pagination-info { text-align: center; font-size: 0.9rem; margin-top: 10px; opacity: 0.8; }
     </style>
 """
@@ -449,18 +449,29 @@ def show_crm(users_df, search_q):
             df = df[(df['Assigned TC Email'] == st.session_state['username']) | (df['Assigned TC Email'] == st.session_state['name'])]
 
     # 2. Admin Team Filter
-    filter_user = None
     if st.session_state['role'] == "Manager":
-        # Put the filter in a nice Expander or Top Column
-        with st.expander("🔍 Filter by Team Member", expanded=False):
+        with st.expander("🔍 Team Filter", expanded=False):
             all_users = ["All"] + users_df['Username'].tolist()
             filter_user = st.selectbox("Select Agent:", all_users)
-    
-    if filter_user and filter_user != "All":
-        if 'Assigned TC Email' in df.columns:
-            df = df[df['Assigned TC Email'] == filter_user]
+            if filter_user != "All" and 'Assigned TC Email' in df.columns:
+                df = df[df['Assigned TC Email'] == filter_user]
 
-    # 3. Search Filter
+    # 3. GLOBAL AGENT FILTER (Source & Tags)
+    with st.expander("🔍 Filter Leads (Source / Tags)", expanded=False):
+        c1, c2 = st.columns(2)
+        with c1:
+            all_src = ["All"] + sorted(list(set(df['Source'].astype(str).unique())))
+            sel_src = st.multiselect("Source:", all_src, placeholder="Select Source")
+        with c2:
+            all_tags = ["All"] + sorted(list(set(df['Tags'].astype(str).unique())))
+            sel_tags = st.multiselect("Tags:", all_tags, placeholder="Select Tags")
+            
+    if sel_src and "All" not in sel_src:
+        df = df[df['Source'].isin(sel_src)]
+    if sel_tags and "All" not in sel_tags:
+        df = df[df['Tags'].isin(sel_tags)]
+
+    # 4. Search Filter
     if search_q:
         res = df[df.astype(str).apply(lambda x: x.str.contains(search_q, case=False)).any(axis=1)]
         st.info(f"🔍 Found {len(res)}")
@@ -547,12 +558,11 @@ def show_crm(users_df, search_q):
         else:
             if ctx == "Future": dframe = dframe.sort_values(by='PD')
             
-            # PAGINATION LOGIC (Only for non-bulk mode)
+            # PAGINATION LOGIC
             if not is_bulk:
                 items_per_page = 20
                 if 'page_' + key_prefix not in st.session_state: st.session_state['page_' + key_prefix] = 0
                 
-                # Reset if page is out of bounds (e.g. after filter)
                 total_pages = max(1, (len(dframe) + items_per_page - 1) // items_per_page)
                 if st.session_state['page_' + key_prefix] >= total_pages: st.session_state['page_' + key_prefix] = 0
                 
@@ -560,13 +570,11 @@ def show_crm(users_df, search_q):
                 start_idx = curr_page * items_per_page
                 end_idx = start_idx + items_per_page
                 
-                # Slice the dataframe
                 dframe_page = dframe.iloc[start_idx:end_idx]
                 
                 html = generate_cards_html(dframe_page, ctx)
                 clicked = click_detector(html, key=f"click_{key_prefix}")
                 
-                # Pagination Controls
                 c_prev, c_info, c_next = st.columns([1, 8, 1])
                 with c_prev:
                     if st.button("◀", key=f"p_{key_prefix}"):
@@ -584,9 +592,8 @@ def show_crm(users_df, search_q):
                 if clicked:
                     r = df[df['Phone'].astype(str).str.replace(r'\D','',regex=True) == clicked].iloc[0]
                     open_lead_modal(r.to_dict(), users_df)
-            
             else:
-                # Bulk Mode (No Cards, just list)
+                # Bulk Mode
                 for i, row in dframe.iterrows():
                     c1, c2 = st.columns([0.15, 0.85])
                     c1.checkbox("", key=f"sel_{key_prefix}_{row['Phone']}")
